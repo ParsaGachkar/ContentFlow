@@ -7,7 +7,7 @@ namespace ContentFlow.Infra.Persistence.Configurations;
 /// <summary>
 /// EF Core mapping for <see cref="ApiKey"/>.
 /// Only the SHA-256 hex digest (<see cref="ApiKey.KeyHash"/>) is stored; scopes are a
-/// space-separated string column (relational-first per ADR-002, no JSON document).
+/// native PostgreSQL text[] array column (relational-first per ADR-002, no JSON document).
 /// </summary>
 public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
 {
@@ -20,7 +20,7 @@ public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
         builder.Property(x => x.KeyPrefix).IsRequired().HasMaxLength(32);
         builder.Property(x => x.KeyHash).IsRequired().HasMaxLength(128);
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
-        builder.Property(x => x.Scopes).IsRequired().HasMaxLength(2000);
+        builder.Property(x => x.Scopes).IsRequired().HasColumnType("text[]");
 
         builder.HasIndex(x => x.KeyPrefix);
         builder.HasIndex(x => x.KeyHash).IsUnique();

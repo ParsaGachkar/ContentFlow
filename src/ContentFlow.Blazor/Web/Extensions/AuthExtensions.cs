@@ -16,8 +16,9 @@ namespace ContentFlow.Blazor.Web.Extensions;
 /// <summary>
 /// ASP.NET Core authN/Z wiring for ContentFlow Web (ADR-004, issue #6).
 /// Cookie scheme <c>ContentFlow.Admin</c> (login path <c>/admin/login</c>) for the
-/// Blazor admin area; <c>ApiKey</c> scheme (<c>X-Api-Key</c> header only) for headless
-/// access. Cookie auth ships in the shared framework — no extra package needed.
+/// Blazor admin area; <c>ApiKey</c> scheme (standard <c>Authorization</c> header,
+/// <c>ApiKey &lt;key&gt;</c>) for headless access. Cookie auth ships in the shared
+/// framework — no extra package needed.
 /// </summary>
 public static class AuthExtensions
 {
@@ -101,9 +102,9 @@ public static class AuthExtensions
             builder.AddConfiguration(configuration.GetSection("Logging")).AddSimpleConsole());
         var logger = loggerFactory.CreateLogger(typeof(AuthExtensions));
         logger.LogInformation(
-            "ContentFlow auth wired (cookie scheme {CookieScheme}, API-key header {Header}). Dev admin login is {State} in {Environment}.",
+            "ContentFlow auth wired (cookie scheme {CookieScheme}, API-key scheme {Scheme}). Dev admin login is {State} in {Environment}.",
             AuthSchemes.AdminCookie,
-            ApiKeyOptions.HeaderName,
+            ApiKeyOptions.SchemeName,
             DevCredentials.IsAllowed(environment.EnvironmentName) ? "ENABLED" : "DISABLED",
             environment.EnvironmentName);
 

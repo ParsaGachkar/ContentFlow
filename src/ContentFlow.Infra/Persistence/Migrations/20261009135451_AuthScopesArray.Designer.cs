@@ -3,6 +3,7 @@ using System;
 using ContentFlow.Infra.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ContentFlow.Infra.Persistence.Migrations
 {
     [DbContext(typeof(ContentFlowDbContext))]
-    partial class ContentFlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261009135451_AuthScopesArray")]
+    partial class AuthScopesArray
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

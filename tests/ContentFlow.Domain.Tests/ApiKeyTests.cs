@@ -15,13 +15,13 @@ public sealed class ApiKeyTests
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
 
     private static ApiKey CreateValid(
-        string scopes = "content.read admin.access",
+        string[]? scopes = null,
         DateTimeOffset? expiresAtUtc = null) =>
         new(
             keyPrefix: "abcd1234",
             keyHash: new string('a', 64),
             name: "test-key",
-            scopes: scopes,
+            scopes: scopes ?? ["content.read", "admin.access"],
             createdAtUtc: Now,
             expiresAtUtc: expiresAtUtc);
 
@@ -90,7 +90,7 @@ public sealed class ApiKeyTests
             null!,
             new string('a', 64),
             "test-key",
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -103,7 +103,7 @@ public sealed class ApiKeyTests
             keyPrefix!,
             new string('a', 64),
             "test-key",
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -114,7 +114,7 @@ public sealed class ApiKeyTests
             "abcd1234",
             null!,
             "test-key",
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -127,7 +127,7 @@ public sealed class ApiKeyTests
             "abcd1234",
             keyHash!,
             "test-key",
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -138,7 +138,7 @@ public sealed class ApiKeyTests
             "abcd1234",
             new string('a', 64),
             null!,
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -151,7 +151,7 @@ public sealed class ApiKeyTests
             "abcd1234",
             new string('a', 64),
             name!,
-            "content.read",
+            ["content.read"],
             Now));
     }
 
@@ -166,17 +166,34 @@ public sealed class ApiKeyTests
             Now));
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void Constructor_RejectsBadScopes(string scopes)
+    [Fact]
+    public void Constructor_RejectsEmptyScopes()
     {
         Assert.Throws<ArgumentException>(() => new ApiKey(
             "abcd1234",
             new string('a', 64),
             "test-key",
-            scopes!,
+            [],
             Now));
+    }
+
+    [Fact]
+    public void Constructor_RejectsBlankScopes()
+    {
+        Assert.Throws<ArgumentException>(() => new ApiKey(
+            "abcd1234",
+            new string('a', 64),
+            "test-key",
+            ["   "],
+            Now));
+    }
+
+    [Fact]
+    public void Constructor_TrimsScopes()
+    {
+        var key = CreateValid(scopes: ["  content.read  "]);
+
+        Assert.Equal(["content.read"], key.Scopes);
     }
 
     [Fact]
@@ -186,9 +203,12 @@ public sealed class ApiKeyTests
             "abcd1234",
             new string('a', 64),
             "  padded-name  ",
-            "content.read",
+            ["content.read"],
             Now);
 
         Assert.Equal("padded-name", key.Name);
     }
 }
+
+
+

@@ -19,7 +19,7 @@ namespace ContentFlow.Blazor.Web.Extensions;
 //       refs). Web always calls `DevCredentials.IsAllowed(env.EnvironmentName)`.
 //   R2. The brief says IApiKeyValidator "returns principal with scopes"; canonical
 //       returns `ApiKeyValidationResult?(ApiKeyId, ApiKeyName, Scopes, Principal)`
-//       where Scopes is space-separated. The handler consumes `.Principal`/`.ApiKeyName`.
+//       where Scopes is a scope array. The handler consumes `.Principal`/`.ApiKeyName`.
 //   R3. Canonical `IPermissionChecker` is `HasAsync(principal, code, ct)` (no default
 //       token); `IDevAdminSeeder` is `SeedAsync(ct)` returning Task.
 //   R4. Canonical DevCredentials carries NO username/password constants, so the
@@ -32,7 +32,7 @@ public static class AuthSchemes
     /// <summary>Cookie scheme for the Blazor admin area (SSR login form + interactive pages).</summary>
     public const string AdminCookie = "ContentFlow.Admin";
 
-    /// <summary>API-key scheme for headless access (X-Api-Key header only).</summary>
+    /// <summary>API-key scheme for headless access (<c>Authorization: ApiKey &lt;key&gt;</c>).</summary>
     public const string ApiKey = "ApiKey";
 }
 
@@ -62,8 +62,8 @@ public static class PermissionClaims
     /// <summary>
     /// True when the (authenticated) principal carries <paramref name="permission"/>
     /// as a <c>contentflow:permission</c> or <c>scope</c> claim value.
-    /// Scope claims may hold several space-separated values (OAuth style, matching
-    /// <c>ApiKeyValidationResult.Scopes</c>).
+    /// Emitters write one claim per scope; space-separated values are still
+    /// tolerated on read (OAuth style).
     /// </summary>
     public static bool HasPermission(ClaimsPrincipal? user, string permission)
     {

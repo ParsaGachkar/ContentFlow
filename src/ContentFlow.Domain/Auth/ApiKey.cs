@@ -9,14 +9,14 @@ namespace ContentFlow.Domain.Auth;
 public sealed class ApiKey : AuditableEntity
 {
     /// <summary>
-    /// Initializes a new instance. For EF Core materialization only; use <see cref="ApiKey(string, string, string, string, DateTimeOffset, DateTimeOffset?)"/> in code.
+    /// Initializes a new instance. For EF Core materialization only; use <see cref="ApiKey(string, string, string, string[], DateTimeOffset, DateTimeOffset?)"/> in code.
     /// </summary>
     private ApiKey()
     {
         KeyPrefix = string.Empty;
         KeyHash = string.Empty;
         Name = string.Empty;
-        Scopes = string.Empty;
+        Scopes = [];
     }
 
     /// <summary>
@@ -25,26 +25,35 @@ public sealed class ApiKey : AuditableEntity
     /// <param name="keyPrefix">First 8 characters of the presented key, for lookup display.</param>
     /// <param name="keyHash">SHA-256 hex hash of the full presented key (never reversible).</param>
     /// <param name="name">Human-readable key name.</param>
-    /// <param name="scopes">Space-separated scopes, e.g. "content.read admin.access".</param>
+    /// <param name="scopes">Granted scopes, e.g. ["content.read", "admin.access"]. Stored as a PostgreSQL text[] array.</param>
     /// <param name="createdAtUtc">Creation time (UTC).</param>
     /// <param name="expiresAtUtc">Optional expiry time (UTC).</param>
-    /// <exception cref="ArgumentException">Thrown when any string argument is empty or whitespace.</exception>
+    /// <exception cref="ArgumentException">Thrown when any string argument is empty or whitespace, or no usable scope is given.</exception>
     public ApiKey(
         string keyPrefix,
         string keyHash,
         string name,
-        string scopes,
+        string[] scopes,
         DateTimeOffset createdAtUtc,
         DateTimeOffset? expiresAtUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(keyPrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(keyHash);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(scopes);
+        ArgumentNullException.ThrowIfNull(scopes);
+        var normalized = scopes
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .ToArray();
+        if (normalized.Length == 0)
+        {
+            throw new ArgumentException("At least one scope is required.", nameof(scopes));
+        }
+
         KeyPrefix = keyPrefix;
         KeyHash = keyHash;
         Name = name.Trim();
-        Scopes = scopes;
+        Scopes = normalized;
         CreatedAtUtc = createdAtUtc;
         ExpiresAtUtc = expiresAtUtc;
     }
@@ -58,8 +67,8 @@ public sealed class ApiKey : AuditableEntity
     /// <summary>Gets the human-readable key name.</summary>
     public string Name { get; private set; }
 
-    /// <summary>Gets the space-separated scopes, e.g. "content.read admin.access".</summary>
-    public string Scopes { get; private set; }
+    /// <summary>Gets the granted scopes, e.g. ["content.read", "admin.access"]. Persisted as PostgreSQL text[].</summary>
+    public string[] Scopes { get; private set; }
 
     /// <summary>Gets the optional expiry time (UTC).</summary>
     public DateTimeOffset? ExpiresAtUtc { get; private set; }
