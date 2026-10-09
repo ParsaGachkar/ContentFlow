@@ -22,7 +22,13 @@ public static class PersistenceExtensions
     /// If <c>ConnectionStrings:ContentFlow</c> is missing/empty, logs a warning and registers
     /// nothing so the app still boots (readiness then reports not-ready).
     /// </summary>
-    public static IServiceCollection AddContentFlowPersistenceFromConfig(
+    /// <returns>
+    /// True when persistence (and its DbContext) was registered; false on DB-less boots.
+    /// Callers gate DbContext-dependent service registrations (e.g. the real API-key
+    /// validator) on this so DB-less boots keep fail-closed TryAdd defaults instead of
+    /// throwing at resolve time.
+    /// </returns>
+    public static bool AddContentFlowPersistenceFromConfig(
         this IServiceCollection services,
         IConfiguration configuration)
     {
@@ -42,7 +48,7 @@ public static class PersistenceExtensions
                 ContentFlowPersistence.ConnectionStringName,
                 ContentFlowPersistence.ConnectionStringName);
 
-            return services;
+            return false;
         }
 
         // Explicit Migrator only: never run migrations from Web.
@@ -53,6 +59,6 @@ public static class PersistenceExtensions
                 failureStatus: HealthStatus.Unhealthy,
                 tags: ReadinessTags);
 
-        return services;
+        return true;
     }
 }

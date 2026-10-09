@@ -5,16 +5,16 @@
 - Least privilege, secure defaults
 - Treat all external input as untrusted
 
-## Authentication
-- ASP.NET Core auth (username/password supported)
-- Dev-only admin (`admin/admin`) ONLY in Development environment
-- API key authentication for headless API with scoped permissions
-- Never enable dev creds in production
+## Authentication (implemented, issue #6)
+- ASP.NET Core cookie auth (scheme `ContentFlow.Admin`, HttpOnly/Lax/8h sliding) for the admin area; custom `ApiKey` scheme (`X-Api-Key` header ONLY — never query string) for headless access
+- Dev-only admin (`admin/admin` defaults via `ContentFlow:DevAdmin` config): login page + POST endpoint exist ONLY in Development (`DevCredentials.IsAllowed` gate; 404/unmapped elsewhere); seeder is idempotent and re-gates internally. Never enabled in production
+- API keys stored as SHA-256 hex digests (never reversible/plaintext); prefix pre-filter + constant-time compare; expiry/revocation enforced (`IsUsableAt`); key material never logged
+- Fail-closed layering: missing/invalid key → 401 JSON; valid key without scope → 403 JSON; validator fails closed (401) when persistence is down; without a configured DB the no-op auth defaults stay registered instead of resolve-time 500s
 
-## Authorization
-- Enforced in Application use cases and endpoints, not just UI
-- Resource/content-type level permissions
-- Dynamic roles/permissions (relational)
+## Authorization (implemented, issue #6)
+- Policies `AdminArea` (`admin.access`) and `ContentReader` (`content.read`) over cookie + API-key schemes; scope/permission claims evaluated server-side per request (`PermissionClaims` + `IPermissionChecker`)
+- Seed permission codes: `content.read`, `content.write`, `content.publish`, `admin.access`, `media.manage`; roles/permissions/role-assignments stored relationally (`roles`, `permissions`, `role_permissions`, `api_keys`)
+- `GET /api/v1/admin/status` requires `admin.access`; `GET /api/v1/content` placeholder stays anonymous-empty (no unpublished data by construction)
 - Anonymous: never sees unpublished/admin content
 
 ## Input & Uploads

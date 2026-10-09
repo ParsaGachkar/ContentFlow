@@ -6,18 +6,108 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+# Least privilege: jobs only read the repo (no deployment job — explicitly out of scope).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Action pinning: v4 major tags (checkout, setup-dotnet, setup-node).
+# Deliberate choice: tags keep the file minimal and Dependabot-friendly; no SHAs.
+
 jobs:
-  build-test:
+  build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.401'
+        dotnet-version: '10.0.401' # pinned in global.json
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x' # LTS; satisfies package.json engines (>=20)
+        cache: npm
+        cache-dependency-path: src/ContentFlow.Blazor/Web/package-lock.json
     - name: Restore
       run: dotnet restore ContentFlow.slnx
+    # NOTE: do NOT set SkipCssBuild. The Web csproj npm targets
+    # (RestoreClientAssets/BuildClientAssets) must run so the CSS bundle is built.
+    # NOTE: no `dotnet format` step — the repo is not format-clean
+    # (.editorconfig mandates CRLF, sources are LF; see format follow-up on the PR).
     - name: Build
       run: dotnet build ContentFlow.slnx --configuration Release --no-restore
-    - name: Test
-      run: dotnet test ContentFlow.slnx --configuration Release --no-restore --verbosity minimal
+    - name: Verify CSS bundle
+      run: test -f src/ContentFlow.Blazor/Web/wwwroot/app.css
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: contentflow_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      # Harmless if unused by current tests; proves the wiring for future DB tests.
+      ConnectionStrings__ContentFlow: Host=localhost;Port=5432;Database=contentflow_tests;Username=postgres;Password=postgres
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.401' # pinned in global.json
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x' # LTS; Web build (referenced by test projects) needs npm for the CSS pipeline
+        cache: npm
+        cache-dependency-path: src/ContentFlow.Blazor/Web/package-lock.json
+    - name: Restore
+      run: dotnet restore ContentFlow.slnx
+    - name: Test (unit + integration, excludes E2E)
+      run: |
+        dotnet test tests/ContentFlow.Domain.Tests/ContentFlow.Domain.Tests.csproj --configuration Release --no-restore
+        dotnet test tests/ContentFlow.Application.Tests/ContentFlow.Application.Tests.csproj --configuration Release --no-restore
+        dotnet test tests/ContentFlow.Infra.Tests/ContentFlow.Infra.Tests.csproj --configuration Release --no-restore
+        dotnet test tests/ContentFlow.Blazor.Tests/ContentFlow.Blazor.Tests.csproj --configuration Release --no-restore
+        dotnet test tests/ContentFlow.IntegrationTests/ContentFlow.IntegrationTests.csproj --configuration Release --no-restore
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    # No postgres service here: E2E provisions its own ephemeral DB via Testcontainers.
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.401' # pinned in global.json
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x' # LTS; Web build needs npm for the CSS pipeline
+        cache: npm
+        cache-dependency-path: src/ContentFlow.Blazor/Web/package-lock.json
+    - name: Restore
+      run: dotnet restore ContentFlow.slnx
+    - name: Build E2E (produces Playwright driver)
+      run: dotnet build tests/ContentFlow.E2E/ContentFlow.E2E.csproj --configuration Release --no-restore
+    # ubuntu runners have Docker, so E2E runs for real (tests skip honestly only when Docker/browsers are absent).
+    # sudo is available on ubuntu-latest, required by --with-deps for browser system dependencies.
+    - name: Install Playwright Chromium
+      run: pwsh tests/ContentFlow.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+    - name: Run E2E
+      run: dotnet test tests/ContentFlow.E2E/ContentFlow.E2E.csproj --configuration Release --no-build
