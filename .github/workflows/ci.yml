@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # NOTE: `pull_request` alone never fired on this repo (only manual dispatch
+  # did), so feature branches are also in the push filter — pushes to an open
+  # PR head attach checks to the PR, preserving the review-before-merge gate.
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'feature/*', 'hotfix/*', 'release/*' ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch: {}
