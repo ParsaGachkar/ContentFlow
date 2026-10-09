@@ -11,6 +11,7 @@
 
 using System.IO.Pipes;
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 using ContentFlow.Infra.Persistence;
 using ContentFlow.Infra.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -85,13 +86,14 @@ public sealed class ContentRepositoryTests : IAsyncLifetime
     {
         await using var db = NewContext();
         var types = new ContentTypeRepository(db);
+        var unitOfWork = new EfUnitOfWork(db);
 
         var type = new ContentType("Articles", "articles");
         Assert.True(type.AddField(new FieldDefinition(type.Id, "Title", "title", FieldDataType.Text, isRequired: true)).IsSuccess);
         Assert.True(type.AddField(new FieldDefinition(type.Id, "Views", "views", FieldDataType.Number)).IsSuccess);
 
         types.Add(type);
-        await types.SaveChangesAsync();
+        await unitOfWork.SaveChangesAsync();
 
         var byId = await types.GetByIdAsync(type.Id);
         Assert.NotNull(byId);
@@ -114,6 +116,7 @@ public sealed class ContentRepositoryTests : IAsyncLifetime
         await using var db = NewContext();
         var types = new ContentTypeRepository(db);
         var items = new ContentItemRepository(db);
+        var unitOfWork = new EfUnitOfWork(db);
 
         var type = new ContentType("Posts", "posts");
         var title = new FieldDefinition(type.Id, "Title", "title", FieldDataType.Text, isRequired: true);
@@ -121,13 +124,13 @@ public sealed class ContentRepositoryTests : IAsyncLifetime
         Assert.True(type.AddField(title).IsSuccess);
         Assert.True(type.AddField(views).IsSuccess);
         types.Add(type);
-        await types.SaveChangesAsync();
+        await unitOfWork.SaveChangesAsync();
 
         var item = new ContentItem(type.Id, "hello-world");
         Assert.True(item.SetFieldValue(title, "Hello").IsSuccess);
         Assert.True(item.SetFieldValue(views, "42").IsSuccess);
         items.Add(item);
-        await items.SaveChangesAsync();
+        await unitOfWork.SaveChangesAsync();
 
         var byId = await items.GetByIdAsync(item.Id);
         Assert.NotNull(byId);
@@ -148,7 +151,7 @@ public sealed class ContentRepositoryTests : IAsyncLifetime
         Assert.Empty(published);
 
         Assert.True(item.Publish().IsSuccess);
-        await items.SaveChangesAsync();
+        await unitOfWork.SaveChangesAsync();
         Assert.Single(await items.ListByTypeAsync(type.Id, ContentStatus.Published));
     }
 }

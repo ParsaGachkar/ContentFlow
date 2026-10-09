@@ -9,84 +9,6 @@ using FluentValidation;
 namespace ContentFlow.Application.Content;
 
 /// <summary>
-/// Creates a new content type (issue #7, ADR-002).
-/// Requires the <c>content.write</c> permission. Slug uniqueness is enforced at the repository level.
-/// </summary>
-/// <param name="Name">Human-readable display name (required, non-blank).</param>
-/// <param name="Slug">URL/machine-friendly unique slug.</param>
-/// <param name="Description">Optional description.</param>
-public sealed record CreateContentTypeCommand(string Name, string Slug, string? Description = null);
-
-/// <summary>
-/// Handles <see cref="CreateContentTypeCommand"/>: validates input, enforces <c>content.write</c>,
-/// rejects duplicate slugs, then persists the new type.
-/// </summary>
-public sealed class CreateContentTypeHandler
-{
-    private readonly IContentTypeRepository _types;
-    private readonly IPermissionChecker _permissions;
-    private readonly IValidator<CreateContentTypeCommand> _validator;
-
-    /// <summary>Initializes a new instance.</summary>
-    public CreateContentTypeHandler(
-        IContentTypeRepository types,
-        IPermissionChecker permissions,
-        IValidator<CreateContentTypeCommand> validator)
-    {
-        _types = types;
-        _permissions = permissions;
-        _validator = validator;
-    }
-
-    /// <summary>
-    /// Handles the command.
-    /// </summary>
-    /// <param name="command">The command.</param>
-    /// <param name="user">The caller principal.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>The created content type DTO, or a failure.</returns>
-    public async Task<Result<ContentTypeDto>> HandleAsync(
-        CreateContentTypeCommand command,
-        ClaimsPrincipal user,
-        CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(user);
-
-        var validation = await _validator.ValidateAsync(command, ct).ConfigureAwait(false);
-        if (!validation.IsValid)
-        {
-            return Result<ContentTypeDto>.Fail(ContentValidation.Error(validation));
-        }
-
-        if (!await _permissions.HasAsync(user, PermissionCodes.ContentWrite, ct).ConfigureAwait(false))
-        {
-            return Result<ContentTypeDto>.Fail(ContentAuth.Forbidden(PermissionCodes.ContentWrite));
-        }
-
-        if (await _types.SlugExistsAsync(command.Slug, ct: ct).ConfigureAwait(false))
-        {
-            return Result<ContentTypeDto>.Fail(
-                new Error("content.duplicate_slug", $"A content type with slug '{command.Slug}' already exists."));
-        }
-
-        ContentType type;
-        try
-        {
-            type = new ContentType(command.Name, command.Slug, command.Description);
-        }
-        catch (ArgumentException ex)
-        {
-            return Result<ContentTypeDto>.Fail(new Error("content.validation", ex.Message));
-        }
-
-        _types.Add(type);
-        await _types.SaveChangesAsync(ct).ConfigureAwait(false);
-        return Result<ContentTypeDto>.Success(ContentTypeDto.FromDomain(type));
-    }
-}
-
-/// <summary>
 /// Adds a field definition to an existing content type (issue #7, ADR-002).
 /// Requires the <c>content.write</c> permission. Duplicate keys surface the domain
 /// <c>content.duplicate_key</c> error via <see cref="ContentType.AddField(FieldDefinition)"/>.
@@ -109,6 +31,32 @@ public sealed record AddFieldDefinitionCommand(
     string? DefaultValue = null,
     int? MaxLength = null);
 
+/// <summary>Validates <see cref="AddFieldDefinitionCommand"/>.</summary>
+public sealed class AddFieldDefinitionValidator : AbstractValidator<AddFieldDefinitionCommand>
+{
+    /// <summary>Initializes a new instance.</summary>
+    public AddFieldDefinitionValidator()
+    {
+        RuleFor(x => x.ContentTypeId)
+            .NotEmpty().WithMessage("Content type identifier is required.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Field name is required.");
+
+        RuleFor(x => x.Key)
+            .NotEmpty().WithMessage("Field key is required.")
+            .Must(ContentSlugRule.IsValid).WithMessage(
+                "Field key '{PropertyValue}' is invalid. Use lowercase letters, digits, and single hyphens (e.g. 'my-field').");
+
+        RuleFor(x => x.DataType)
+            .IsInEnum().WithMessage("Field data type is not recognized.");
+
+        RuleFor(x => x.MaxLength)
+            .Must(m => !m.HasValue || m.Value > 0).WithMessage(
+                "Maximum length must be positive when set.");
+    }
+}
+
 /// <summary>
 /// Handles <see cref="AddFieldDefinitionCommand"/>: validates input, enforces <c>content.write</c>,
 /// loads the owning type, then delegates duplicate-key detection to the domain.
@@ -118,16 +66,19 @@ public sealed class AddFieldDefinitionHandler
     private readonly IContentTypeRepository _types;
     private readonly IPermissionChecker _permissions;
     private readonly IValidator<AddFieldDefinitionCommand> _validator;
+    private readonly IUnitOfWork _unitOfWork;
 
     /// <summary>Initializes a new instance.</summary>
     public AddFieldDefinitionHandler(
         IContentTypeRepository types,
         IPermissionChecker permissions,
-        IValidator<AddFieldDefinitionCommand> validator)
+        IValidator<AddFieldDefinitionCommand> validator,
+        IUnitOfWork unitOfWork)
     {
         _types = types;
         _permissions = permissions;
         _validator = validator;
+        _unitOfWork = unitOfWork;
     }
 
     /// <summary>
@@ -186,7 +137,7 @@ public sealed class AddFieldDefinitionHandler
             return Result<FieldDefinitionDto>.Fail(added.Error!);
         }
 
-        await _types.SaveChangesAsync(ct).ConfigureAwait(false);
-        return Result<FieldDefinitionDto>.Success(FieldDefinitionDto.FromDomain(field));
+        await _unitOfWork.SaveChangesAsync(ct).ConfigureAwait(false);
+        return Result<FieldDefinitionDto>.Success(field.ToDto());
     }
 }

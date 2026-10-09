@@ -7,6 +7,7 @@
 // defaultValue, maxLength), which throws ArgumentException on invariant violations.
 
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 
 namespace ContentFlow.Domain.Tests.Content;
 
@@ -126,3 +127,4 @@ public sealed class FieldDefinitionTests
         Assert.Equal(defaultValue, field.DefaultValue);
     }
 }
+

@@ -60,10 +60,4 @@ public sealed class ContentTypeRepository : IContentTypeRepository
         ArgumentNullException.ThrowIfNull(contentType);
         _db.ContentTypes.Add(contentType);
     }
-
-    /// <inheritdoc />
-    public Task<int> SaveChangesAsync(CancellationToken ct = default)
-    {
-        return _db.SaveChangesAsync(ct);
-    }
 }

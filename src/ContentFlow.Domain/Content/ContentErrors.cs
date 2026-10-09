@@ -82,3 +82,4 @@ public static class ContentErrors
     public static Error DuplicateKeyError(string key) =>
         new(DuplicateKey, $"A field with key '{key}' already exists in this content type.");
 }
+
