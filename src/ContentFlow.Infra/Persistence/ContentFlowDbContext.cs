@@ -1,3 +1,4 @@
+using ContentFlow.Domain.Auth;
 using ContentFlow.Domain.Common;
 using ContentFlow.Domain.Content;
 using ContentFlow.Domain.Media;
@@ -32,6 +33,18 @@ public class ContentFlowDbContext : DbContext
 
     /// <summary>Gets the media asset metadata.</summary>
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+
+    /// <summary>Gets the security roles.</summary>
+    public DbSet<Role> Roles => Set<Role>();
+
+    /// <summary>Gets the permission catalog.</summary>
+    public DbSet<Permission> Permissions => Set<Permission>();
+
+    /// <summary>Gets the role-permission assignments.</summary>
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    /// <summary>Gets the scoped API keys for headless access.</summary>
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -1,0 +1,105 @@
+@page "/admin/login"
+@using ContentFlow.Blazor.Web.Extensions
+@using ContentFlow.Domain.Auth
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.AspNetCore.Http
+@using Microsoft.Extensions.Hosting
+@inject IHostEnvironment Environment
+@inject IAntiforgery Antiforgery
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Admin login - ContentFlow</PageTitle>
+
+@* Static SSR by design: no @rendermode. The form posts to
+   POST /admin/login/submit (AccountEndpoints, mapped only in Development).
+   The submit path is intentionally distinct from this page's route: Razor
+   component endpoints also match POST, so sharing the path would be ambiguous. *@
+@if (!DevCredentials.IsAllowed(Environment.EnvironmentName))
+{
+    <main>
+        <h1>Not Found</h1>
+        <p>Sorry, the content you are looking for does not exist.</p>
+    </main>
+}
+else
+{
+    <main>
+        <h1>Admin login</h1>
+        <p>Development-only sign-in for the admin area (ADR-004). This account does not exist outside Development.</p>
+        @if (IsAuthenticated)
+        {
+            <p>You are already signed in as <strong>@UserName</strong>. <a href="/admin">Go to the admin dashboard</a>.</p>
+        }
+        @if (ShowError)
+        {
+            <p role="alert"><strong>Login failed.</strong> Check your credentials and try again.</p>
+        }
+        <form method="post" action="/admin/login/submit">
+            <input type="hidden" name="__RequestVerificationToken" value="@RequestToken" />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <div>
+                <label for="username">Username</label>
+                <input id="username" type="text" name="username" autocomplete="username" required />
+            </div>
+            <div>
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password" autocomplete="current-password" required />
+            </div>
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+    </main>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    private HttpContext? RequestContext => HttpContextAccessor.HttpContext;
+
+    private bool ShowError => string.Equals(Error, "1", StringComparison.Ordinal);
+
+    private bool IsAuthenticated => RequestContext?.User?.Identity?.IsAuthenticated == true;
+
+    private string? UserName => RequestContext?.User?.Identity?.Name;
+
+    private string? ReturnUrl
+    {
+        get
+        {
+            var query = RequestContext?.Request.Query;
+            if (query is null)
+            {
+                return null;
+            }
+
+            return query["returnUrl"].FirstOrDefault() ?? query["ReturnUrl"].FirstOrDefault();
+        }
+    }
+
+    private string? RequestToken
+    {
+        get
+        {
+            var httpContext = HttpContextAccessor.HttpContext;
+            if (httpContext is null || !DevCredentials.IsAllowed(Environment.EnvironmentName))
+            {
+                return null;
+            }
+
+            return Antiforgery.GetAndStoreTokens(httpContext).RequestToken;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        // Dev-only gate (ADR-004, issue #6): outside Development this route must
+        // behave like a missing page (404). Canonical Domain takes the environment
+        // NAME (no hosting refs in Domain). Available during static SSR via
+        // IHttpContextAccessor; this page never runs in an interactive circuit.
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext is not null && !DevCredentials.IsAllowed(Environment.EnvironmentName))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        }
+    }
+}

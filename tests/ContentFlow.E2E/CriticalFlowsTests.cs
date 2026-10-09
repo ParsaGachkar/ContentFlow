@@ -27,7 +27,12 @@
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using ContentFlow.Domain.Auth;
+using ContentFlow.Infra.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ContentFlow.E2E;
 
@@ -179,14 +184,12 @@ public sealed class CriticalFlowsTests
         await _db.AssertLiveAsync();
     }
 
-    // API+DB path (issue #2 follow-up, ONE proving test): the container is
-    // live with migrations applied AND the versioned headless API still
-    // returns the empty published list with 200 — anonymous never sees
-    // unpublished content. NOTE: the placeholder API does not query the DB
-    // yet (content use cases + scoped API-key authZ per ADR-004 are pending),
-    // so this pins container-live + migrated-schema + placeholder contract
-    // together; it becomes a true read-through assertion once the API reads
-    // published content from the database.
+    // API+DB path (issue #2 follow-up): the container is live with migrations
+    // applied AND the versioned headless API still returns the empty published
+    // list with 200 — anonymous never sees unpublished content. NOTE: the
+    // placeholder API does not query the DB yet (content use cases per ADR-002
+    // are pending); this pins container-live + migrated-schema + placeholder
+    // contract together until the API reads published content from the DB.
     [RequiresDockerFact]
     public async Task AnonymousContentApi_WithMigratedDatabase_ExposesNoUnpublishedContent()
     {
@@ -199,6 +202,51 @@ public sealed class CriticalFlowsTests
         var items = await response.Content.ReadFromJsonAsync<List<Dictionary<string, object>>>();
         Assert.NotNull(items);
         Assert.Empty(items);
+    }
+
+    // Scoped API keys (issue #6, ADR-004): keys are minted in-test, stored as
+    // SHA-256 hashes in the ephemeral DB, and enforced server-side — 200 with
+    // the admin.access scope, 403 without it, 401 anonymous/invalid (covered
+    // in IntegrationTests). Each test mints a unique key (guid suffix), so
+    // tests stay isolated despite the shared container.
+    [RequiresDockerFact]
+    public async Task ScopedApiKey_WithAdminAccess_Returns200()
+    {
+        await _db.AssertLiveAsync();
+        var presented = await SeedApiKeyAsync("e2e-admin-key", "content.read admin.access");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/status");
+        request.Headers.Add("X-Api-Key", presented);
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [RequiresDockerFact]
+    public async Task ScopedApiKey_WithoutAdminAccess_Returns403()
+    {
+        await _db.AssertLiveAsync();
+        var presented = await SeedApiKeyAsync("e2e-reader-key", "content.read");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/status");
+        request.Headers.Add("X-Api-Key", presented);
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private async Task<string> SeedApiKeyAsync(string name, string scopes)
+    {
+        var presented = "e2e" + Guid.NewGuid().ToString("N");
+        var prefix = presented[..8];
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(presented)));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ContentFlowDbContext>();
+        db.ApiKeys.Add(new ApiKey(prefix, hash, name, scopes, DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+
+        return presented;
     }
 
     // Real-Chromium rendering of real SSR HTML (skipped without installed
