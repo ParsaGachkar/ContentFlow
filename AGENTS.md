@@ -55,7 +55,7 @@ ContentFlow is a modular CMS supporting:
 | Local Dev | Docker Compose | Postgres, Adminer, optional MinIO/imgproxy |
 | Storage | Local filesystem + S3-compatible (optional) | Abstracted |
 | Migrations | Dedicated Migrator | Independent executable |
-| CI | GitHub Actions | Build, test, format, CSS verification |
+| CI | GitHub Actions | build+test+e2e jobs (Node for CSS, Postgres service, Playwright install); PR `pull_request` events never fired on this repo — `push` filter covers `feature/*`/`hotfix/*`/`release/*` so branch pushes attach checks to PRs; format gate pending line-ending normalization (issue #15) |
 
 ## 4. Repository Structure (Target)
 
