@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ContentFlow.Domain.Shared\ContentFlow.Domain.Shared.csproj" />
+    <ProjectReference Include="..\..\ContentFlow.Application.Shared\ContentFlow.Application.Shared.csproj" />
+    <ProjectReference Include="..\..\ContentFlow.Application\ContentFlow.Application.csproj" />
+    <ProjectReference Include="..\..\ContentFlow.Infra\ContentFlow.Infra.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+</Project>

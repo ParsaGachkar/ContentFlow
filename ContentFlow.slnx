@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContentFlow.Application.Shared/ContentFlow.Application.Shared.csproj" />
+    <Project Path="src/ContentFlow.Application/ContentFlow.Application.csproj" />
+    <Project Path="src/ContentFlow.Domain.Shared/ContentFlow.Domain.Shared.csproj" />
+    <Project Path="src/ContentFlow.Domain/ContentFlow.Domain.csproj" />
+    <Project Path="src/ContentFlow.Infra/ContentFlow.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/ContentFlow.Blazor/" />
+  <Folder Name="/src/ContentFlow.Blazor/Client/">
+    <Project Path="src/ContentFlow.Blazor/Client/ContentFlow.Blazor.Client.csproj" />
+  </Folder>
+  <Folder Name="/src/ContentFlow.Blazor/Web/">
+    <Project Path="src/ContentFlow.Blazor/Web/ContentFlow.Blazor.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContentFlow.Application.Tests/ContentFlow.Application.Tests.csproj" />
+    <Project Path="tests/ContentFlow.Blazor.Tests/ContentFlow.Blazor.Tests.csproj" />
+    <Project Path="tests/ContentFlow.Domain.Tests/ContentFlow.Domain.Tests.csproj" />
+    <Project Path="tests/ContentFlow.E2E/ContentFlow.E2E.csproj" />
+    <Project Path="tests/ContentFlow.Infra.Tests/ContentFlow.Infra.Tests.csproj" />
+    <Project Path="tests/ContentFlow.IntegrationTests/ContentFlow.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ContentFlow.Migrator/ContentFlow.Migrator.csproj" />
+  </Folder>
+</Solution>
