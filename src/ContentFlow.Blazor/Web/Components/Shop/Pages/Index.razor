@@ -1,0 +1,19 @@
+@page "/shop"
+@layout Shop.Layout.ShopLayout
+@rendermode InteractiveServer
+
+<PageTitle>Shop - ContentFlow</PageTitle>
+
+<h1>Shop</h1>
+<p>Welcome to the ContentFlow shop. This page runs in <strong>Interactive Server</strong> mode.</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Add to Cart (@currentCount)</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+}

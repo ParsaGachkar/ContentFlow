@@ -30,7 +30,13 @@ ContentFlow is a modular CMS supporting:
 ## 3. Technology Stack (Implemented vs Planned)
 
 ### Implemented
-- None yet (bootstrap phase)
+- .NET 10 foundation: solution with Domain/Application/Infra/Blazor projects and test projects
+- Persistence: `ContentFlowDbContext` (PostgreSQL, Npgsql, snake_case naming) with foundation entities (`ContentType`, `FieldDefinition`, `ContentItem`, `ContentFieldValue`, `MediaAsset`) and initial EF Core migration
+- Migrator: console tool with explicit `apply`/`status` commands and configuration via `appsettings.json`/env vars (Web does NOT apply migrations at startup)
+- Rendering: Static SSR default; `/admin/*` + `/shop/*` pages carry `@rendermode InteractiveServer`. `Program.cs` MUST keep `.AddInteractiveServerRenderMode()` on `MapRazorComponents` — it only enables opt-in interactivity, and omitting it breaks prerendering of interactive pages with HTTP 500 (see issue #13)
+- API surface: OpenAPI (`/openapi/v1.json`) + Scalar UI, versioned placeholder `GET /api/v1/content` (empty list; anonymous never sees unpublished), JSON health endpoints `/healthz` (liveness) + `/readyz` (placeholder)
+- CSS: Tailwind v4 (CSS-first, no tailwind.config.js) + DaisyUI + Lucide sprite + Vazirmatn with RTL baseline; reproducible via `npm ci && npm run build`; MSBuild `RestoreClientAssets`/`BuildClientAssets` targets in Web csproj (set `SkipCssBuild=true` to skip)
+- Tests: bUnit render/interaction tests for admin/shop; integration tests (WebApplicationFactory) for routes + health; E2E uses Testcontainers PostgreSQL (ephemeral, `postgres:16-alpine`) + Playwright Chromium with discovery-time skip when Docker/browsers unavailable (xUnit 2.9 has no runtime Skip API)
 
 ### Planned
 | Area | Technology | Notes |
@@ -132,7 +138,8 @@ dotnet test tests/ContentFlow.Infra.Tests/ContentFlow.Infra.Tests.csproj
 dotnet test tests/ContentFlow.IntegrationTests/ContentFlow.IntegrationTests.csproj
 dotnet test tests/ContentFlow.Blazor.Tests/ContentFlow.Blazor.Tests.csproj
 
-# E2E (Playwright)
+# E2E (Playwright; one-time browser install; skips honestly if unavailable)
+# playwright.ps1 install --with-deps chromium  (from the Playwright package driver dir)
 dotnet test tests/ContentFlow.E2E/ContentFlow.E2E.csproj
 
 # Format
@@ -144,8 +151,14 @@ docker compose down
 docker compose down -v
 
 # Migrations (via Migrator)
-# dotnet run --project tools/ContentFlow.Migrator -- [args]
+dotnet run --project tools/ContentFlow.Migrator/ContentFlow.Migrator.csproj -- apply   # apply pending migrations
+dotnet run --project tools/ContentFlow.Migrator/ContentFlow.Migrator.csproj -- status  # list applied/pending
+
+# Add a migration (EF Core tools; migrations live in Infra, Migrator is the startup project)
+dotnet ef migrations add <Name> --project src/ContentFlow.Infra/ContentFlow.Infra.csproj --startup-project tools/ContentFlow.Migrator/ContentFlow.Migrator.csproj --output-dir Persistence/Migrations
 ```
+
+Verified (Debug/Release build, all tests pass, `apply`/`status` exercised against local Postgres via Docker Compose).
 
 ## 7. Testing Strategy
 
@@ -155,6 +168,8 @@ docker compose down -v
 - **Blazor**: bUnit for SSR vs interactive component behavior
 - **Integration**: HTTP endpoints, authZ, health, persistence
 - **E2E**: Playwright (.NET) - public SSR, admin auth flows, unauthorized, form submission, interactive flow (admin or `/shop`)
+- **Bug workflow (mandatory)**: every bug gets a GitHub issue; the failing state MUST be captured by a test that stays as a regression guard — never delete or weaken failing tests to get green. Diagnose via test output (unit → integration → E2E), never via ad-hoc port-bound servers. Document the root cause on the issue before closing
+- **E2E environment**: Testcontainers PostgreSQL is the ephemeral DB (unique DB per run, dynamic ports, never hardcoded). Playwright Chromium needs one-time browser install (`playwright.ps1 install --with-deps chromium`); tests skip at discovery time when Docker/browsers are unavailable. If Web does not yet consume a connection string, keep the container ready-but-unused with a TODO referencing the persistence issue
 
 ## 8. Security Guidelines
 
@@ -192,9 +207,10 @@ For **every** task:
 
 ## 11. Current State (Bootstrap)
 
-**Implemented**: `.gitignore`, `ContentFlow.slnx` (empty), git repo (master, no commits)  
-**Planned (this bootstrap)**: Full foundation + planning artifacts (ADRs, docs, solution/projects, minimal SSR+interactive demo, CSS pipeline, Docker Compose, CI, GitHub planning)  
-**Implemented vs Planned Distinction**: This file documents planned state; will be updated as items become implemented.
+**Implemented**: documentation/ADRs, solution + all projects (Clean Architecture references), Docker Compose, CI, and persistence foundation (`ContentFlowDbContext`, foundation entities, initial migration) plus the independent Migrator tool.  
+**Planned**: authentication/authorization (ADR-004), media storage implementation (ADR-006), content management use cases, and admin/shop features.  
+**Also implemented**: Blazor rendering (SSR default + `/admin`/`/shop` InteractiveServer shells + home page), OpenAPI/Scalar + health endpoints + versioned content placeholder API, CSS pipeline (Tailwind/DaisyUI/Lucide/Vazirmatn), bUnit + integration + E2E (Testcontainers + Playwright) suites, GitHub repo with 11 milestones / 22 labels / 13 issues (incl. closed bug #13).  
+**Implemented vs Planned Distinction**: Items listed under §3 Implemented are verified; everything else remains planned until implemented and verified.
 
 ## 12. References
 

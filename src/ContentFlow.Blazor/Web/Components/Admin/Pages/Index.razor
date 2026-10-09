@@ -1,0 +1,19 @@
+@page "/admin"
+@layout Admin.Layout.AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Admin - ContentFlow</PageTitle>
+
+<h1>Admin Dashboard</h1>
+<p>Welcome to the ContentFlow admin area. This page runs in <strong>Interactive Server</strong> mode.</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me (@currentCount)</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+}

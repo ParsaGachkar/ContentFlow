@@ -1,7 +1,25 @@
 ﻿@page "/"
+@layout Layout.MainLayout
 
-<PageTitle>Home</PageTitle>
+<PageTitle>ContentFlow - Home</PageTitle>
+<HeadContent>
+    <meta name="description" content="ContentFlow public homepage, rendered with static server-side rendering (SSR) by default per ADR-001." />
+</HeadContent>
 
-<h1>Hello, world!</h1>
+<main>
+    <h1>Welcome to ContentFlow</h1>
+    <p>This is the public homepage rendered with <strong>Static SSR</strong> by default (no circuit, SEO-friendly).</p>
 
-Welcome to your new app.
+    <section aria-label="Areas">
+        <h2>Areas</h2>
+        <ul>
+            <li><a href="/admin">Admin</a> — Interactive Server area for content management.</li>
+            <li><a href="/shop">Shop</a> — Interactive Server area for storefront interactions.</li>
+        </ul>
+    </section>
+
+    <section aria-label="Rendering policy">
+        <h2>Rendering policy (ADR-001)</h2>
+        <p>Public routes stay static unless explicitly marked interactive. Only <code>/admin/*</code> and <code>/shop/*</code> opt in to Interactive Server.</p>
+    </section>
+</main>

@@ -7,11 +7,63 @@
     <ProjectReference Include="..\..\ContentFlow.Infra\ContentFlow.Infra.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+
+    <!-- CSS pipeline (Tailwind + DaisyUI + Lucide + Vazirmatn). -->
+    <ClientAssetsPackageManager Condition="'$(ClientAssetsPackageManager)' == ''">npm</ClientAssetsPackageManager>
+    <!-- Set to true to build the app without running the Node/CSS pipeline. -->
+    <SkipCssBuild Condition="'$(SkipCssBuild)' == ''">false</SkipCssBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Keep the npm workspace out of content/none globs and the published output. -->
+    <Content Remove="node_modules\**" />
+    <Content Remove="Styles\**" />
+    <Content Remove="scripts\**" />
+    <Content Remove="package.json" />
+    <Content Remove="package-lock.json" />
+    <None Remove="node_modules\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClientAssetSource Include="Styles\**\*.css;scripts\**\*.mjs;Components\**\*.razor;package.json" />
+  </ItemGroup>
+
+  <Target Name="RestoreClientAssets"
+          Condition="'$(SkipCssBuild)' != 'true'"
+          Inputs="package.json;package-lock.json"
+          Outputs="node_modules\.package-lock.json">
+    <Message Importance="high" Text="Restoring client assets ($(ClientAssetsPackageManager) ci)..." />
+    <Exec Command="$(ClientAssetsPackageManager) ci" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="BuildClientAssets"
+          Condition="'$(SkipCssBuild)' != 'true'"
+          DependsOnTargets="RestoreClientAssets"
+          BeforeTargets="BeforeBuild"
+          Inputs="@(ClientAssetSource)"
+          Outputs="wwwroot\app.css;wwwroot\lib\lucide\lucide-sprite.svg">
+    <Message Importance="high" Text="Building client assets ($(ClientAssetsPackageManager) run build)..." />
+    <Exec Command="$(ClientAssetsPackageManager) run build" WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <!-- Register generated files with the static web assets pipeline. The wwwroot
+         glob is evaluated before the build runs, so freshly generated assets must
+         be added to Content explicitly (they are matched by DefineStaticWebAssets
+         at AssignTargetPaths time using @(Content)). -->
+    <ItemGroup>
+      <Content Remove="wwwroot\app.css;wwwroot\fonts\**;wwwroot\lib\lucide\**" />
+      <Content Include="wwwroot\app.css" Condition="Exists('wwwroot\app.css')" />
+      <Content Include="wwwroot\fonts\**" Condition="Exists('wwwroot\fonts')" />
+      <Content Include="wwwroot\lib\lucide\**" Condition="Exists('wwwroot\lib\lucide')" />
+    </ItemGroup>
+  </Target>
 
 </Project>

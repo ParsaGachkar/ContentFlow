@@ -1,9 +1,14 @@
 using ContentFlow.Blazor.Web.Components;
+using ContentFlow.Blazor.Web.Endpoints;
+using ContentFlow.Blazor.Web.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRazorComponents();
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+builder.Services.AddContentFlowOpenApi();
 
 var app = builder.Build();
 
@@ -20,6 +25,19 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
-app.MapRazorComponents<App>();
+
+app.MapContentFlowOpenApi();
+app.MapContentFlowHealth();
+app.MapContentApi();
+
+// NOTE (issue #13): AddInteractiveServerRenderMode does NOT make pages interactive
+// by itself — interactivity stays opt-in via `@rendermode InteractiveServer` on
+// individual pages (/admin/*, /shop/*). SSR remains the default because App,
+// Routes and the public layouts carry no @rendermode. Omitting this line breaks
+// prerendering of interactive pages (HTTP 500 on /admin, /shop).
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
 app.Run();
+
+public partial class Program;
