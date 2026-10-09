@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ContentFlow.Infra.Persistence.Migrations
 {
     [DbContext(typeof(ContentFlowDbContext))]
-    [Migration("20261009135451_AuthScopesArray")]
-    partial class AuthScopesArray
+    [Migration("20261009140347_AuthFoundation")]
+    partial class AuthFoundation
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
