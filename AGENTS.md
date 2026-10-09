@@ -15,8 +15,8 @@ ContentFlow is a modular CMS supporting:
 **Rendering Policy**: Static SSR by default. Interactivity is opt-in.  
 - Public pages: Static Server-Side Rendering (no circuit required)
 - Administration (`/admin/*`): Interactive Server
-- **Shop (`/shop/*`)**: Interactive Server (as specified)
-- Other features: Selective interactivity only when justified
+- **Shop (`/shop/*`)**: Interactive Auto (server prerender, then WebAssembly — no per-user server circuit; components live in Blazor.Client)
+- Other features: Selective interactivity only when justified (Auto/WASM only with concrete per-feature need)
 
 ## 2. Core Principles
 
@@ -116,7 +116,7 @@ All dependencies must flow inward: **Presentation → Infrastructure → Applica
 | Application.Shared | App contracts/shared abstractions | Infra, Blazor, EF |
 | Application | Use cases, CQRS, validators, auth requirements, orchestration | Concrete infra implementations |
 | Infra | EF Core/Postgres, repositories, storage, auth adapters, external services | Blazor Web/Client specifics (keep UI-agnostic) |
-| Blazor.Web | Host, routing, SSR default, Interactive Server areas (`/admin/*`, `/shop/*`), endpoints, DI | Client-only concerns |
+| Blazor.Web | Host, routing, SSR default, Interactive Server (`/admin/*`) + Interactive Auto (`/shop/*`) areas, endpoints, DI | Client-only concerns |
 | Blazor.Client | Genuinely WebAssembly-only code | Server-only deps, Infra implementations |
 | Migrator | Explicit migrations/deployment init | Blazor/UI; must be independent |
 
@@ -212,7 +212,7 @@ For **every** task:
 **Implemented**: documentation/ADRs, solution + all projects (Clean Architecture references), Docker Compose, CI, and persistence foundation (`ContentFlowDbContext`, foundation entities, initial migration) plus the independent Migrator tool.  
 **Planned**: authentication/authorization (ADR-004), media storage implementation (ADR-006), content management use cases, and admin/shop features.  
 **Also implemented**: Blazor rendering (SSR default + `/admin`/`/shop` InteractiveServer shells + home page), OpenAPI/Scalar + health endpoints + versioned content placeholder API, CSS pipeline (Tailwind/DaisyUI/Lucide/Vazirmatn), bUnit + integration + E2E (Testcontainers + Playwright) suites, GitHub repo with 11 milestones / 22 labels / 13 issues (incl. closed bug #13).  
-**On branch `feature/auth-foundation` (in PR, not merged)**: auth foundation per ADR-004 — relational roles/permissions/API keys (`Scopes` as `text[]`) + `AuthFoundation`/`AuthScopesArray` migrations, cookie + `Authorization: ApiKey` schemes, `AdminArea`/`ContentReader` policies, dev-only admin login/seed gate, real `AddContentFlowAuth` wired only when persistence is configured (fail-closed defaults otherwise), scoped-key E2E proofs (200/403), hardened CI (build+test+e2e jobs).  
+**On branch `feature/auth-foundation` (in PR, not merged)**: auth foundation per ADR-004 — relational roles/permissions/API keys (`Scopes` as `text[]`) + `AuthFoundation` migration, cookie + `Authorization: ApiKey` schemes, `AdminArea`/`ContentReader` policies, dev-only admin login/seed gate, real `AddContentFlowAuth` wired only when persistence is configured (fail-closed defaults otherwise), scoped-key E2E proofs (200/403), hardened CI (build+test+e2e jobs). Shop is InteractiveAuto (components in Blazor.Client); Docker Compose includes the full stack (`postgres` → `migrator apply` → `web`, Adminer, optional MinIO/imgproxy).  
 **Implemented vs Planned Distinction**: Items listed under §3 Implemented are verified; everything else remains planned until implemented and verified.
 
 ## 12. References

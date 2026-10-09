@@ -5,12 +5,14 @@
     <ProjectReference Include="..\..\ContentFlow.Application.Shared\ContentFlow.Application.Shared.csproj" />
     <ProjectReference Include="..\..\ContentFlow.Application\ContentFlow.Application.csproj" />
     <ProjectReference Include="..\..\ContentFlow.Infra\ContentFlow.Infra.csproj" />
+    <ProjectReference Include="..\Client\ContentFlow.Blazor.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
   </ItemGroup>
 
   <PropertyGroup>

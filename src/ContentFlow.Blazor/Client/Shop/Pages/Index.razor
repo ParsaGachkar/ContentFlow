@@ -1,11 +1,11 @@
 @page "/shop"
 @layout Shop.Layout.ShopLayout
-@rendermode InteractiveServer
+@rendermode InteractiveAuto
 
 <PageTitle>Shop - ContentFlow</PageTitle>
 
 <h1>Shop</h1>
-<p>Welcome to the ContentFlow shop. This page runs in <strong>Interactive Server</strong> mode.</p>
+<p>Welcome to the ContentFlow shop. This page runs in <strong>Interactive Auto</strong> mode (server prerender, then WebAssembly interactivity — no per-user server circuit).</p>
 
 <button class="btn btn-primary" @onclick="IncrementCount">Add to Cart (@currentCount)</button>
 

@@ -1,0 +1,9 @@
+# Host build artifacts must never enter image build contexts (e.g. a Windows
+# node_modules carries node.exe shims that break Linux container builds).
+**/bin/
+**/obj/
+**/node_modules/
+.env
+.git/
+.vs/
+TestResult*/
