@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="FluentValidation" />
     <ProjectReference Include="..\ContentFlow.Domain.Shared\ContentFlow.Domain.Shared.csproj" />
     <ProjectReference Include="..\ContentFlow.Domain\ContentFlow.Domain.csproj" />
     <ProjectReference Include="..\ContentFlow.Application.Shared\ContentFlow.Application.Shared.csproj" />
