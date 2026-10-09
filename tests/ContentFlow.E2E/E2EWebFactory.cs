@@ -12,16 +12,25 @@ namespace ContentFlow.E2E;
 
 /// <summary>
 /// Factory booting the real Blazor Web host for endpoint tests.
-/// NOTE: the ephemeral Postgres connection string is intentionally NOT
-/// injected here — Program.cs does not consume any connection string yet
-/// (see the TODO in EphemeralEnvironment, issue #2). When persistence wiring
-/// lands, add an in-memory ConnectionStrings:ContentFlow override here via
-/// builder.ConfigureAppConfiguration.
+/// Load-bearing E2E DB (issue #2 follow-up): the collection-shared
+/// <see cref="EphemeralEnvironment"/> publishes one migrated connection string
+/// per run as <see cref="EphemeralEnvironment.SharedConnectionString"/>, which
+/// is flowed here into the host configuration as
+/// <c>ConnectionStrings:ContentFlow</c> — the exact key
+/// PersistenceExtensions.AddContentFlowPersistenceFromConfig reads. When Docker
+/// is unavailable the value is null, the key stays at its appsettings default
+/// (empty), and the app boots without persistence (/readyz reports not-ready).
 /// </summary>
 public sealed class E2EWebFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        var connectionString = EphemeralEnvironment.SharedConnectionString;
+        if (!string.IsNullOrWhiteSpace(connectionString))
+        {
+            builder.UseSetting("ConnectionStrings:ContentFlow", connectionString);
+        }
     }
 }

@@ -14,19 +14,25 @@
 //    DOM assertions on their interactive markup is the smoke level this
 //    suite promises. Subresource loads (/_framework/*) cannot resolve under
 //    about:blank, so tests assert DOM text only, never console/network state.
-//  - Postgres liveness is asserted against the ephemeral container
-//    (ready-but-unused until issue #2; see EphemeralEnvironment).
+//  - Postgres is LOAD-BEARING (issue #2 follow-up): the collection-shared
+//    EphemeralEnvironment starts one container per run, applies the real EF
+//    Core migrations, and publishes its connection string, which E2EWebFactory
+//    flows into the host as ConnectionStrings:ContentFlow. The host registers
+//    persistence + a real /readyz DB gate from that key, so the container
+//    genuinely gates readiness (see EphemeralEnvironment).
 //
 // Never requires real payments/SMS or any external service beyond an
-// optional local Docker endpoint (container test only) and optional
+// optional local Docker endpoint (container tests only) and optional
 // installed Playwright browsers (browser tests only).
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace ContentFlow.E2E;
 
-public sealed class CriticalFlowsTests : IClassFixture<E2EWebFactory>, IClassFixture<EphemeralEnvironment>, IClassFixture<BrowserFixture>
+[Collection(E2ECollection.CollectionName)]
+public sealed class CriticalFlowsTests
 {
     private readonly E2EWebFactory _factory;
     private readonly EphemeralEnvironment _db;
@@ -71,6 +77,11 @@ public sealed class CriticalFlowsTests : IClassFixture<E2EWebFactory>, IClassFix
         Assert.Contains(payload.Checks, check => check.Key == "self" && check.Value == "healthy");
     }
 
+    // Readiness: /readyz always returns 200 with a JSON body containing
+    // "ready" (case-insensitive) — "ready" when the ephemeral DB is wired and
+    // migrated, "not-ready" when it is not (e.g. no Docker). This pins the
+    // contract in both states; the Docker-gated test below pins the ready
+    // state specifically.
     [Fact]
     public async Task Readyz_Returns200Json_WithReadyStatus()
     {
@@ -81,6 +92,25 @@ public sealed class CriticalFlowsTests : IClassFixture<E2EWebFactory>, IClassFix
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("ready", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Load-bearing readiness: with the ephemeral container up and migrated,
+    // the host's DB readiness check passes and /readyz reports exactly "ready"
+    // (not "not-ready"). Fails loudly when Docker is present but the
+    // container/migrations/host-wiring break; skipped only without Docker.
+    [RequiresDockerFact]
+    public async Task Readyz_ReportsReady_WhenContainerIsUp()
+    {
+        _db.AssumeAvailable();
+        Assert.True(_db.MigrationApplied, $"Migrations were not applied: {_db.MigrationError}");
+
+        using var response = await _client.GetAsync("/readyz");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(body);
+        Assert.Equal("ready", document.RootElement.GetProperty("status").GetString());
     }
 
     // (c) Unauthorized/placeholder flow: anonymous callers to the versioned
@@ -147,6 +177,28 @@ public sealed class CriticalFlowsTests : IClassFixture<E2EWebFactory>, IClassFix
     public async Task PostgresContainer_IsLive()
     {
         await _db.AssertLiveAsync();
+    }
+
+    // API+DB path (issue #2 follow-up, ONE proving test): the container is
+    // live with migrations applied AND the versioned headless API still
+    // returns the empty published list with 200 — anonymous never sees
+    // unpublished content. NOTE: the placeholder API does not query the DB
+    // yet (content use cases + scoped API-key authZ per ADR-004 are pending),
+    // so this pins container-live + migrated-schema + placeholder contract
+    // together; it becomes a true read-through assertion once the API reads
+    // published content from the database.
+    [RequiresDockerFact]
+    public async Task AnonymousContentApi_WithMigratedDatabase_ExposesNoUnpublishedContent()
+    {
+        await _db.AssertLiveAsync();
+
+        using var response = await _client.GetAsync("/api/v1/content");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var items = await response.Content.ReadFromJsonAsync<List<Dictionary<string, object>>>();
+        Assert.NotNull(items);
+        Assert.Empty(items);
     }
 
     // Real-Chromium rendering of real SSR HTML (skipped without installed

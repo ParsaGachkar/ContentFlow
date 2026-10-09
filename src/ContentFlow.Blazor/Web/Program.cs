@@ -9,6 +9,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddContentFlowOpenApi();
+builder.Services.AddContentFlowPersistenceFromConfig(builder.Configuration);
 
 var app = builder.Build();
 

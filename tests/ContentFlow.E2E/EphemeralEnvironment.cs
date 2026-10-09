@@ -1,20 +1,28 @@
-// Ephemeral Postgres for E2E (ADR-007). Owned by the E2E suite; starts one
-// PostgreSqlContainer per test-class run with a unique database name.
+// Ephemeral Postgres for E2E (ADR-007, issue #2 follow-up). Owned by the E2E
+// suite; one instance per test collection (see E2ECollection) with a unique
+// database name per run.
 //
-// CURRENT STATUS (verified against src/ContentFlow.Blazor/Web/Program.cs):
-// the Web host does NOT yet consume any DB connection string —
-// ContentFlowPersistence.AddContentFlow() (Infra) is never called from
-// Program.cs and /readyz is an explicit placeholder. So the container is
-// READY-BUT-UNUSED for now: it proves the ephemeral environment works and
-// asserts liveness, without influencing app behavior.
-// TODO (issue #2): when Program.cs wires persistence, inject
-// ConnectionString into E2EWebFactory app configuration
-// (ConnectionStrings:ContentFlow) instead of leaving the container unused.
+// LOAD-BEARING: after the container starts, this fixture applies the Infra EF
+// Core migrations (ContentFlowDbContext.Database.MigrateAsync, resolved
+// transitively via the Web project reference — no extra package needed) and
+// publishes the live connection string as SharedConnectionString, which
+// E2EWebFactory flows into the Web host as ConnectionStrings:ContentFlow.
+// The Web host (Program.cs + PersistenceExtensions, read-only verified)
+// registers persistence + a real /readyz DB gate from that key, so the
+// container genuinely gates readiness. The Web host never runs migrations
+// itself (explicit Migrator only); the fixture does it once per run.
 //
+// Failure policy: Docker problems at startup AND migration failures are both
+// captured in IsAvailable/UnavailableReason/MigrationError and surface RED via
+// AssumeAvailable (E2EEnvironmentException) in container-dependent tests —
+// never a silent fallback. Graceful discovery-time skip ([RequiresDockerFact])
+// applies ONLY when no Docker endpoint exists at all.
 // Isolation/repeatability: unique database per run, Testcontainers-assigned
-// dynamic host port (never hardcoded), container disposed after each class.
+// dynamic host port (never hardcoded), container disposed after the run.
 // No real payments/SMS/external services are ever required.
 
+using ContentFlow.Infra.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
 namespace ContentFlow.E2E;
@@ -37,6 +45,24 @@ public sealed class EphemeralEnvironment : IAsyncLifetime
 
     /// <summary>Why the container is unavailable (null when available).</summary>
     public string? UnavailableReason { get; private set; }
+
+    /// <summary>
+    /// True once EF Core migrations were applied against the container.
+    /// Only true together with <see cref="IsAvailable"/>.
+    /// </summary>
+    public bool MigrationApplied { get; private set; }
+
+    /// <summary>Migration failure detail (null when migrations applied cleanly).</summary>
+    public string? MigrationError { get; private set; }
+
+    /// <summary>
+    /// Connection string published for the Web host. Set once the container is
+    /// started AND migrations are applied; null otherwise. Read by
+    /// <see cref="E2EWebFactory"/> at host-build time (collection fixtures
+    /// initialize before the first CreateClient call). Static because the
+    /// factory and this fixture are constructed independently by xUnit.
+    /// </summary>
+    public static string? SharedConnectionString { get; private set; }
 
     /// <summary>
     /// Live connection string for the ephemeral database. Throws
@@ -73,7 +99,38 @@ public sealed class EphemeralEnvironment : IAsyncLifetime
                 .Build();
 
             await _container.StartAsync();
+
+            try
+            {
+                // Load-bearing step: apply the real Infra migrations so the
+                // Web host's /readyz DB check (AddDbContextCheck) sees a
+                // migrated schema. Uses the shared Infra Npgsql options
+                // (snake_case + Infra migrations assembly). The Web host
+                // itself never migrates (explicit Migrator only).
+                var options = new DbContextOptionsBuilder<ContentFlowDbContext>()
+                    .UseContentFlowNpgsql(_container.GetConnectionString())
+                    .Options;
+                await using var context = new ContentFlowDbContext(options);
+                await context.Database.MigrateAsync();
+            }
+            catch (Exception ex)
+            {
+                MigrationError =
+                    $"EF Core migrations could not be applied to the ephemeral Postgres " +
+                    $"database '{DatabaseName}' " +
+                    $"({ex.GetType().Name}: {ex.Message}).";
+                UnavailableReason =
+                    "E2E prerequisite failed at runtime: the ephemeral Postgres container " +
+                    $"started but migrations failed. {MigrationError} " +
+                    "This is a hard failure, not a skip — fix the model/migrations and re-run.";
+                await _container.DisposeAsync();
+                _container = null;
+                return;
+            }
+
+            SharedConnectionString = _container.GetConnectionString();
             IsAvailable = true;
+            MigrationApplied = true;
         }
         catch (Exception ex)
         {
@@ -93,7 +150,9 @@ public sealed class EphemeralEnvironment : IAsyncLifetime
             _container = null;
         }
 
+        SharedConnectionString = null;
         IsAvailable = false;
+        MigrationApplied = false;
     }
 
     /// <summary>
@@ -111,12 +170,17 @@ public sealed class EphemeralEnvironment : IAsyncLifetime
     }
 
     /// <summary>
-    /// Liveness probe: the container executes SELECT 1 successfully and its
-    /// connection string targets this run's unique database.
+    /// Liveness probe: the container executes SELECT 1 successfully, its
+    /// connection string targets this run's unique database, AND migrations
+    /// were applied (hard failure otherwise — an unmigrated container must
+    /// never silently pass as "live").
     /// </summary>
     public async Task AssertLiveAsync()
     {
         AssumeAvailable();
+        Assert.True(
+            MigrationApplied,
+            $"Ephemeral Postgres is up but migrations were not applied: {MigrationError}");
 
         var result = await _container!.ExecScriptAsync("SELECT 1;");
         Assert.True(

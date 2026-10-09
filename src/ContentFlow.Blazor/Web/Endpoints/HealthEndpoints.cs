@@ -25,22 +25,49 @@ public static class HealthEndpoints
         .WithTags("Health")
         .AllowAnonymous();
 
-        // Readiness: placeholder until Postgres/Npgsql wiring lands in Web.
-        // TODO: replace the body with a real readiness gate (e.g. AddDbContextCheck<ContentFlowDbContext>()
-        // from Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore — version already pinned
-        // in Directory.Packages.props) and fail closed when dependencies are unavailable.
-        endpoints.MapGet("/readyz", () => Results.Json(new
+        // Readiness: gated on the DB/readiness checks registered by
+        // PersistenceExtensions (AddDbContextCheck<ContentFlowDbContext> with tags "db"/"ready").
+        // When no connection string is configured, no DB check is registered and the empty
+        // report below maps to "not-ready" (app still boots; see PersistenceExtensions).
+        // Always returns 200 with a JSON body containing "ready" (case-insensitive):
+        // status is "ready" or "not-ready" plus a per-check object. Never run migrations here.
+        endpoints.MapHealthChecks("/readyz", new HealthCheckOptions
         {
-            status = "ready",
-            timestamp = DateTimeOffset.UtcNow,
-        }))
+            Predicate = check => check.Tags.Contains("db") || check.Tags.Contains("ready"),
+            ResultStatusCodes =
+            {
+                [HealthStatus.Healthy] = StatusCodes.Status200OK,
+                [HealthStatus.Degraded] = StatusCodes.Status200OK,
+                [HealthStatus.Unhealthy] = StatusCodes.Status200OK,
+            },
+            ResponseWriter = WriteReadinessResponse,
+        })
         .WithName("HealthReadiness")
-        .WithSummary("Readiness probe (placeholder).")
+        .WithSummary("Readiness probe.")
         .WithTags("Health")
-        .Produces(StatusCodes.Status200OK)
         .AllowAnonymous();
 
         return endpoints;
+    }
+
+    private static Task WriteReadinessResponse(HttpContext context, HealthReport report)
+    {
+        context.Response.ContentType = "application/json";
+
+        // Contract: /readyz always returns 200 with a body containing "ready"
+        // (case-insensitive). "not-ready" contains "ready", so both states satisfy it.
+        // No DB check registered (no connection string) => empty entries => not-ready.
+        var isReady = report.Entries.Count > 0 && report.Status == HealthStatus.Healthy;
+        var payload = new
+        {
+            status = isReady ? "ready" : "not-ready",
+            timestamp = DateTimeOffset.UtcNow,
+            checks = report.Entries.ToDictionary(
+                e => e.Key,
+                e => e.Value.Status == HealthStatus.Healthy ? "ready" : "not-ready"),
+        };
+
+        return context.Response.WriteAsync(JsonSerializer.Serialize(payload));
     }
 
     private static Task WriteJsonResponse(HttpContext context, HealthReport report)

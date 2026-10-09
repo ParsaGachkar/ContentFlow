@@ -33,6 +33,7 @@ ContentFlow is a modular CMS supporting:
 - .NET 10 foundation: solution with Domain/Application/Infra/Blazor projects and test projects
 - Persistence: `ContentFlowDbContext` (PostgreSQL, Npgsql, snake_case naming) with foundation entities (`ContentType`, `FieldDefinition`, `ContentItem`, `ContentFieldValue`, `MediaAsset`) and initial EF Core migration
 - Migrator: console tool with explicit `apply`/`status` commands and configuration via `appsettings.json`/env vars (Web does NOT apply migrations at startup)
+- Web persistence: `AddContentFlowPersistenceFromConfig` reads `ConnectionStrings:ContentFlow`; real `/readyz` DB gate (`AddDbContextCheck`, always HTTP 200 with `ready`/`not-ready` body). E2E container is load-bearing (migrations applied, readiness asserted)
 - Rendering: Static SSR default; `/admin/*` + `/shop/*` pages carry `@rendermode InteractiveServer`. `Program.cs` MUST keep `.AddInteractiveServerRenderMode()` on `MapRazorComponents` — it only enables opt-in interactivity, and omitting it breaks prerendering of interactive pages with HTTP 500 (see issue #13)
 - API surface: OpenAPI (`/openapi/v1.json`) + Scalar UI, versioned placeholder `GET /api/v1/content` (empty list; anonymous never sees unpublished), JSON health endpoints `/healthz` (liveness) + `/readyz` (placeholder)
 - CSS: Tailwind v4 (CSS-first, no tailwind.config.js) + DaisyUI + Lucide sprite + Vazirmatn with RTL baseline; reproducible via `npm ci && npm run build`; MSBuild `RestoreClientAssets`/`BuildClientAssets` targets in Web csproj (set `SkipCssBuild=true` to skip)
@@ -169,7 +170,8 @@ Verified (Debug/Release build, all tests pass, `apply`/`status` exercised agains
 - **Integration**: HTTP endpoints, authZ, health, persistence
 - **E2E**: Playwright (.NET) - public SSR, admin auth flows, unauthorized, form submission, interactive flow (admin or `/shop`)
 - **Bug workflow (mandatory)**: every bug gets a GitHub issue; the failing state MUST be captured by a test that stays as a regression guard — never delete or weaken failing tests to get green. Diagnose via test output (unit → integration → E2E), never via ad-hoc port-bound servers. Document the root cause on the issue before closing
-- **E2E environment**: Testcontainers PostgreSQL is the ephemeral DB (unique DB per run, dynamic ports, never hardcoded). Playwright Chromium needs one-time browser install (`playwright.ps1 install --with-deps chromium`); tests skip at discovery time when Docker/browsers are unavailable. If Web does not yet consume a connection string, keep the container ready-but-unused with a TODO referencing the persistence issue
+- **E2E environment**: Testcontainers PostgreSQL is the ephemeral DB (unique DB per run, dynamic ports, never hardcoded). The E2E fixture applies real Infra migrations to the container and injects its connection string into Web via `ConnectionStrings:ContentFlow`; `/readyz` must report ready when the container is up. Playwright Chromium needs one-time browser install (`playwright.ps1 install chromium` from the test output dir); tests skip at discovery time when Docker/browsers are unavailable
+- **Web persistence contract**: Web reads `ConnectionStrings:ContentFlow` (env override `ConnectionStrings__ContentFlow`); missing/empty → boots without DB, `/readyz` reports `not-ready`. Web NEVER auto-migrates. `/readyz` always returns 200 with `{status: ready|not-ready, checks}` — gate on the body field, never the status code
 
 ## 8. Security Guidelines
 
