@@ -1,4 +1,5 @@
 using ContentFlow.Application.Shared.Authorization;
+using ContentFlow.Blazor.Client;
 using ContentFlow.Blazor.Web.Components;
 using ContentFlow.Blazor.Web.Endpoints;
 using ContentFlow.Blazor.Web.Extensions;
@@ -8,8 +9,12 @@ using ContentFlow.Infra.Auth;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+// InteractiveServer covers /admin/*; InteractiveAuto (server prerender, then
+// WebAssembly) covers /shop/* so public shop traffic holds no server circuit.
+// Public pages stay static SSR: no @rendermode anywhere outside those areas.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddInteractiveWebAssemblyComponents();
 
 builder.Services.AddContentFlowOpenApi();
 var persistenceEnabled = builder.Services.AddContentFlowPersistenceFromConfig(builder.Configuration);
@@ -62,12 +67,16 @@ app.MapAdminApi();
 app.MapAccountEndpoints();
 
 // NOTE (issue #13): AddInteractiveServerRenderMode does NOT make pages interactive
-// by itself — interactivity stays opt-in via `@rendermode InteractiveServer` on
-// individual pages (/admin/*, /shop/*). SSR remains the default because App,
-// Routes and the public layouts carry no @rendermode. Omitting this line breaks
-// prerendering of interactive pages (HTTP 500 on /admin, /shop).
+// by itself — interactivity stays opt-in via `@rendermode` on individual pages
+// (/admin/* InteractiveServer, /shop/* InteractiveAuto). SSR remains the default
+// because App, Routes and the public layouts carry no @rendermode. Omitting the
+// server render mode breaks prerendering of interactive pages (HTTP 500).
+// AddAdditionalAssemblies exposes the Client assembly so the router discovers
+// the WebAssembly-rendered shop components.
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .AddInteractiveWebAssemblyRenderMode()
+    .AddAdditionalAssemblies(typeof(ContentFlow.Blazor.Client._Imports).Assembly);
 
 app.Run();
 

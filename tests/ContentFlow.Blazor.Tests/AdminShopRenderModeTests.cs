@@ -1,20 +1,19 @@
-// Representative InteractiveServer render-mode tests (ADR-001, ADR-007).
+// Representative render-mode tests (ADR-001, ADR-007).
 //
-// /admin and /shop MUST carry the InteractiveServer render mode attribute.
-// Uses xUnit + component reflection fallback because bUnit is not referenced
-// by ContentFlow.Blazor.Tests.csproj (see report to main for the one-line
-// opt-in). No new packages required for these tests.
+// /admin MUST carry the InteractiveServer render mode attribute (operator
+// area: server circuits are fine); /shop MUST carry InteractiveAuto (public
+// area: server prerender, then WebAssembly — no per-user server circuit).
 
+using ContentFlow.Blazor.Client.Shop.Layout;
 using ContentFlow.Blazor.Web.Components.Admin.Layout;
-using ContentFlow.Blazor.Web.Components.Shop.Layout;
 using AdminIndex = ContentFlow.Blazor.Web.Components.Admin.Pages.Index;
-using ShopIndex = ContentFlow.Blazor.Web.Components.Shop.Pages.Index;
+using ShopIndex = ContentFlow.Blazor.Client.Shop.Pages.Index;
 
 namespace ContentFlow.Blazor.Tests;
 
 /// <summary>
-/// Proves the Admin and Shop areas opt into InteractiveServer rendering
-/// while keeping their own layouts and routes.
+/// Proves the Admin (InteractiveServer) and Shop (InteractiveAuto) areas opt
+/// into their required render modes while keeping their own layouts/routes.
 /// </summary>
 public sealed class AdminShopRenderModeTests
 {
@@ -54,11 +53,11 @@ public sealed class AdminShopRenderModeTests
     }
 
     [Fact]
-    public void Shop_CarriesInteractiveServerRenderMode()
+    public void Shop_CarriesInteractiveAutoRenderMode()
     {
         Assert.True(
-            HasInteractiveServerRenderMode(ShopType),
-            $"Shop Index must opt into InteractiveServer. Found render-mode attributes: [{string.Join(", ", GetRenderModeAttributeNames(ShopType))}]");
+            HasRenderMode(ShopType, "InteractiveAuto"),
+            $"Shop Index must opt into InteractiveAuto. Found render-mode attributes: [{string.Join(", ", GetRenderModeAttributeNames(ShopType))}]");
     }
 
     private static string? GetRouteTemplate(Type componentType)
@@ -96,11 +95,14 @@ public sealed class AdminShopRenderModeTests
             .ToList();
     }
 
-    // The Razor compiler emits `@rendermode InteractiveServer` as a compiler-generated
-    // attribute (e.g. `__PrivateComponentRenderModeAttribute`), NOT as a literal
-    // `RenderModeInteractiveServerAttribute`. Inspect constructor + named arguments
-    // (via CustomAttributeData, without instantiating) for an InteractiveServer mode.
-    private static bool HasInteractiveServerRenderMode(Type componentType)
+    private static bool HasInteractiveServerRenderMode(Type componentType) =>
+        HasRenderMode(componentType, "InteractiveServer");
+
+    // The Razor compiler emits `@rendermode X` as a compiler-generated attribute
+    // (e.g. `__PrivateComponentRenderModeAttribute`), NOT as a literal
+    // `RenderModeXAttribute`. Inspect constructor + named arguments (via
+    // CustomAttributeData, without instantiating) for the expected mode name.
+    private static bool HasRenderMode(Type componentType, string mode)
     {
         foreach (var data in System.Reflection.CustomAttributeData.GetCustomAttributes(componentType))
         {
@@ -111,7 +113,7 @@ public sealed class AdminShopRenderModeTests
 
             foreach (var arg in data.ConstructorArguments)
             {
-                if (ValueMentionsInteractiveServer(arg.Value))
+                if (ValueMentionsMode(arg.Value, mode))
                 {
                     return true;
                 }
@@ -119,7 +121,7 @@ public sealed class AdminShopRenderModeTests
 
             foreach (var named in data.NamedArguments)
             {
-                if (ValueMentionsInteractiveServer(named.TypedValue.Value))
+                if (ValueMentionsMode(named.TypedValue.Value, mode))
                 {
                     return true;
                 }
@@ -143,7 +145,7 @@ public sealed class AdminShopRenderModeTests
                             | System.Reflection.BindingFlags.Instance)
                         .Select(f => f.GetValue(instance)));
 
-                if (members.Any(ValueMentionsInteractiveServer))
+                if (members.Any(m => ValueMentionsMode(m, mode)))
                 {
                     return true;
                 }
@@ -153,7 +155,7 @@ public sealed class AdminShopRenderModeTests
         return false;
     }
 
-    private static bool ValueMentionsInteractiveServer(object? value)
+    private static bool ValueMentionsMode(object? value, string mode)
     {
         if (value is null)
         {
@@ -164,7 +166,7 @@ public sealed class AdminShopRenderModeTests
         {
             foreach (var item in items)
             {
-                if (ValueMentionsInteractiveServer(item))
+                if (ValueMentionsMode(item, mode))
                 {
                     return true;
                 }
@@ -175,6 +177,7 @@ public sealed class AdminShopRenderModeTests
 
         var text = value.ToString();
         return text is not null
-            && text.Contains("InteractiveServer", StringComparison.OrdinalIgnoreCase);
+            && text.Contains(mode, StringComparison.OrdinalIgnoreCase);
     }
 }
+

@@ -44,6 +44,6 @@ public sealed class AdminShopRouteTests : IClassFixture<ContentFlowWebFactory>
         var body = await _client.GetStringAsync("/shop");
 
         Assert.Contains("Shop", body, StringComparison.Ordinal);
-        Assert.Contains("Interactive Server", body, StringComparison.Ordinal);
+        Assert.Contains("Interactive Auto", body, StringComparison.Ordinal);
     }
 }

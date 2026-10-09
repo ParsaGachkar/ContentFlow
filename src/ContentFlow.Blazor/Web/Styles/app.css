@@ -16,6 +16,8 @@
 /* Scan Razor components and C# sources for utility class usage. */
 @source "../Components/**/*.razor";
 @source "../Components/**/*.cs";
+@source "../../Client/**/*.razor";
+@source "../../Client/**/*.cs";
 
 /* Self-hosted Vazirmatn variable font (Persian/Arabic + Latin). */
 @font-face {

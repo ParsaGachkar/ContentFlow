@@ -174,7 +174,7 @@ public sealed class CriticalFlowsTests
         var body = await _client.GetStringAsync("/shop");
 
         Assert.Contains("Shop", body, StringComparison.Ordinal);
-        Assert.Contains("Interactive Server", body, StringComparison.Ordinal);
+        Assert.Contains("Interactive Auto", body, StringComparison.Ordinal);
     }
 
     // Ephemeral Postgres liveness (skipped without Docker; see
@@ -221,6 +221,18 @@ public sealed class CriticalFlowsTests
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // STRICT text[] round-trip check (review): both seeded scopes must come
+        // back in the response payload — proves the PostgreSQL array column
+        // stores and returns every scope, not just the gating one. If scopes
+        // ever move to a relation table, this test (plus the migration) changes.
+        var body = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(body);
+        var scopes = document.RootElement.GetProperty("scopes").EnumerateArray()
+            .Select(e => e.GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("content.read", scopes);
+        Assert.Contains("admin.access", scopes);
     }
 
     [RequiresDockerFact]

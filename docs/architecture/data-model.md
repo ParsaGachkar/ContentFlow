@@ -20,6 +20,10 @@ PostgreSQL, relational-first. Metadata-driven content model to support configura
 - Draft/published, revisions/history, localization-aware fields
 - Content type changes must be safe with data preservation
 
+## Auth tables (issue #6)
+- `roles`, `permissions`, `role_permissions` (composite key, cascades), `api_keys` (unique `key_hash`, indexed `key_prefix`).
+- `api_keys.scopes` is a native PostgreSQL `text[]` array (one scope claim each at validation). Scopes are bounded value strings with no entity lifecycle, so a join table would add a join on the hottest auth path for zero integrity gain. **Strict check:** E2E asserts multi-scope round-trip through the array; the trigger to normalize is scopes gaining metadata/lifecycle (descriptions, grouping, admin assignment UI).
+
 ## Persistence Wiring (Web ↔ PostgreSQL, issues #2/#5)
 - Provider: PostgreSQL via Npgsql; `ContentFlowDbContext` uses snake_case naming (foundation entities: `ContentType`, `FieldDefinition`, `ContentItem`, `ContentFieldValue`, `MediaAsset`).
 - Connection contract: `ConnectionStrings:ContentFlow`, env override `ConnectionStrings__ContentFlow` (see `tools/ContentFlow.Migrator/appsettings.json` for the shape; run/migrate commands in `docs/development/setup.md`).

@@ -8,9 +8,9 @@ Static SSR is default. Interactivity is opt-in.
 | Area | Mode | Rationale |
 |---|---|---|
 | Public (/, /articles/*, /categories/*, products browsing) | Static SSR | SEO, performance, low client overhead |
-| `/admin/*` | Interactive Server | Rich editing, drag-drop, complex forms/workflows |
-| `/shop/*` | Interactive Server | Cart/basket/checkout state, interactive UX |
-| Other | Selective | Justify per feature |
+| `/admin/*` | Interactive Server | Operator-only area; server circuits acceptable, keeps deployment simple |
+| `/shop/*` | Interactive Auto | Public high-traffic area: server prerender (SEO) then WebAssembly — no per-user server circuit |
+| Other | Selective | Justify per feature (Auto/WebAssembly only with concrete need) |
 
 ## Rules
 - Do not make root `Routes` globally interactive
@@ -24,7 +24,13 @@ Static SSR is default. Interactivity is opt-in.
 Foundation must demonstrate:
 1. Public SSR page renders meaningful HTML without circuit
 2. `/admin` is interactive server shell
-3. `/shop` is interactive server shell
+3. `/shop` is interactive auto shell (server prerender + WASM)
+
+## Interactive Auto requirements (shop)
+- Shop components live in `ContentFlow.Blazor.Client` (the downloadable bundle)
+- Web references Client; `Program.cs` registers both render modes + `AddAdditionalAssemblies` for route discovery
+- Tailwind `@source` globs cover the Client directory
+- Auto is per-page opt-in (`@rendermode InteractiveAuto`); enabling the render mode does not make anything interactive by itself (same rule as #13)
 
 ## Deployment Considerations
-Interactive Server requires SignalR, circuit lifecycle, reconnection, scaling awareness. SSR scales horizontally without persistent circuits per user session in the same way.
+Interactive Server requires SignalR, circuit lifecycle, reconnection, scaling awareness. SSR scales horizontally without persistent circuits per user session in the same way. Interactive Auto downloads the client bundle on first visit (heavier first load) but then holds no server circuit — the trade that suits public shop traffic.

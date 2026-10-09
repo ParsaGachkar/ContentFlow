@@ -10,12 +10,12 @@
 ## Getting Started
 1. Clone repo: `git clone <repo-url>`
 2. Copy `.env.example` to `.env` and configure (placeholders only)
-3. Start database: `docker compose up -d`
-4. Apply migrations: `dotnet run --project tools/ContentFlow.Migrator/ContentFlow.Migrator.csproj -- apply`
-5. Run app: `dotnet run --project src/ContentFlow.Blazor/Web`
-6. Access: Public SSR at http://localhost:port; Admin `/admin` (Interactive Server); Shop `/shop` (Interactive Server)
+3. Start the full stack: `docker compose up -d --build` (runs `postgres` → `migrator apply` → `web` automatically)
+4. Access: Web at http://localhost:5000 (`WEB_PORT` in `.env`); Admin `/admin` (Interactive Server); Shop `/shop` (Interactive Auto); Adminer at http://localhost:8080 (`ADMINER_PORT` — change it if the port is taken)
+5. Migrator one-shots: `docker compose run --rm migrator [apply|status]`
+6. Local (non-Docker) alternative: start Postgres, `dotnet run --project tools/ContentFlow.Migrator -- apply`, then `dotnet run --project src/ContentFlow.Blazor/Web`
 
-Local run order is fixed: `docker compose up -d` → Migrator `apply` → run Web. Web NEVER auto-migrates (verified in `Program.cs`: no migration call at startup).
+Fixed start order: database → Migrator `apply` → Web. Web NEVER auto-migrates (verified in `Program.cs`: no migration call at startup). In Compose this order is enforced by health/dependency gates (`postgres` healthy → `migrator` completed → `web`).
 
 ## Database & Connection String (Web ↔ PostgreSQL)
 

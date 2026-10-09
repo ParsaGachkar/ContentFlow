@@ -7,7 +7,7 @@
 
 using Bunit;
 using AdminIndex = ContentFlow.Blazor.Web.Components.Admin.Pages.Index;
-using ShopIndex = ContentFlow.Blazor.Web.Components.Shop.Pages.Index;
+using ShopIndex = ContentFlow.Blazor.Client.Shop.Pages.Index;
 
 namespace ContentFlow.Blazor.Tests;
 
@@ -41,7 +41,7 @@ public sealed class AdminShopBUnitTests : IDisposable
         var cut = _ctx.RenderComponent<ShopIndex>();
 
         Assert.Contains("<h1>Shop</h1>", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Interactive Server", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Interactive Auto", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Add to Cart (0)", cut.Markup, StringComparison.Ordinal);
     }
 

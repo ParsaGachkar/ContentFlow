@@ -1,4 +1,38 @@
 services:
+  # One-shot database migration. `docker compose up` runs it to completion
+  # before the web app starts (see web.depends_on below); run it explicitly
+  # anytime with: docker compose run --rm migrator [apply|status].
+  migrator:
+    build:
+      context: .
+      dockerfile: tools/ContentFlow.Migrator/Dockerfile
+    environment:
+      CONTENTFLOW_ConnectionStrings__ContentFlow: Host=postgres;Port=5432;Database=${POSTGRES_DB:-contentflow};Username=${POSTGRES_USER:-contentflow};Password=${POSTGRES_PASSWORD:-contentflow}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["apply"]
+    restart: "no"
+  web:
+    build:
+      context: .
+      dockerfile: src/ContentFlow.Blazor/Web/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__ContentFlow: Host=postgres;Port=5432;Database=${POSTGRES_DB:-contentflow};Username=${POSTGRES_USER:-contentflow};Password=${POSTGRES_PASSWORD:-contentflow}
+    ports:
+      - "${WEB_PORT:-5000}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   postgres:
     image: postgres:16
     environment:
@@ -18,7 +52,7 @@ services:
   adminer:
     image: adminer:latest
     ports:
-      - "8080:8080"
+      - "${ADMINER_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
