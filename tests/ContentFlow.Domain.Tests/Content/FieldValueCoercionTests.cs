@@ -8,6 +8,7 @@
 // enforcement stays with SetFieldValue.
 
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 
 namespace ContentFlow.Domain.Tests.Content;
 
@@ -339,3 +340,4 @@ public sealed class FieldValueCoercionTests
             item.FieldValues.Single(v => v.FieldDefinitionId == dateTime.Id).DateTimeValue);
     }
 }
+

@@ -6,6 +6,7 @@
 // (ctor ContentType(name, slug, description?), AddField(FieldDefinition) -> Result).
 
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 
 namespace ContentFlow.Domain.Tests.Content;
 
@@ -156,3 +157,4 @@ public sealed class ContentTypeTests
         Assert.Throws<ArgumentNullException>(() => type.AddField(null!));
     }
 }
+

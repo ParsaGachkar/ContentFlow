@@ -7,6 +7,7 @@
 // and retained as history across unpublish/archive.
 
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 
 namespace ContentFlow.Domain.Tests.Content;
 
@@ -222,3 +223,4 @@ public sealed class ContentItemLifecycleTests
         Assert.NotNull(item.PublishedAtUtc);
     }
 }
+

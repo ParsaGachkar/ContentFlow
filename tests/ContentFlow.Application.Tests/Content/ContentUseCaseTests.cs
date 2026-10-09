@@ -1,17 +1,13 @@
 // Content use-case contract tests (issue #7, ADR-007: application use cases with
 // mocked abstractions via NSubstitute).
 //
-// DRIFT NOTE (read before extending): at the time of writing, src contains NO
-// content handlers — src/ContentFlow.Application has no Content/ implementation and
-// the specified handler contract (HandleAsync(cmd, ClaimsPrincipal, ct) -> Result<T>)
-// does not exist yet (parallel track). These tests therefore pin the orchestration
-// contract every handler MUST satisfy, driving the real Wave-1 seams
-// (IPermissionChecker + IContentTypeRepository/IContentItemRepository mocks + real
-// domain): forbidden short-circuits before any repo mutation (Add never called),
-// validation failure short-circuits before mutation, create/publish/unpublish happy
-// paths, publish-when-published failure without persisting, and the update-published
-// guard location. When handlers land, extend this file with direct handler tests —
-// do not weaken these pins.
+// These tests pin the orchestration contract every handler MUST satisfy, driving
+// the real Wave-1 seams (IPermissionChecker + IContentTypeRepository/
+// IContentItemRepository + IUnitOfWork mocks + real domain): forbidden
+// short-circuits before any repo mutation (Add never called), validation failure
+// short-circuits before mutation, create/publish/unpublish happy paths,
+// publish-when-published failure without persisting, and the update-published
+// guard location. Commits go through IUnitOfWork (never the repositories).
 //
 // Verified Wave-1 facts these tests rely on:
 // - Duplicate slug checks live at the repository level (SlugExistsAsync); the domain
@@ -25,6 +21,7 @@ using ContentFlow.Application.Shared.Authorization;
 using ContentFlow.Application.Shared.Content;
 using ContentFlow.Domain.Auth;
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 using NSubstitute;
 
 namespace ContentFlow.Application.Tests.Content;
@@ -51,12 +48,20 @@ public sealed class ContentUseCaseTests
         return checker;
     }
 
+    private static IUnitOfWork SavingUnitOfWork(int saved = 1)
+    {
+        var unitOfWork = Substitute.For<IUnitOfWork>();
+        unitOfWork.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(saved);
+        return unitOfWork;
+    }
+
     [Fact]
     public async Task Create_ForbiddenWithoutPermission_DoesNotTouchRepos()
     {
         var checker = DenyingChecker();
         var typeRepo = Substitute.For<IContentTypeRepository>();
         var itemRepo = Substitute.For<IContentItemRepository>();
+        var unitOfWork = SavingUnitOfWork();
         var principal = Principal();
 
         // Specified handler order: permission gate first; forbidden short-circuits.
@@ -65,22 +70,21 @@ public sealed class ContentUseCaseTests
         Assert.False(allowed);
         typeRepo.DidNotReceive().Add(Arg.Any<ContentType>());
         itemRepo.DidNotReceive().Add(Arg.Any<ContentItem>());
-        await typeRepo.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
-        await itemRepo.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Publish_ForbiddenWithoutPermission_DoesNotPersist()
     {
         var checker = DenyingChecker();
-        var itemRepo = Substitute.For<IContentItemRepository>();
+        var unitOfWork = SavingUnitOfWork();
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
 
         var allowed = await checker.HasAsync(Principal(), PermissionCodes.ContentPublish, CancellationToken.None);
 
         Assert.False(allowed);
         Assert.Equal(ContentStatus.Draft, item.Status);
-        await itemRepo.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -102,31 +106,30 @@ public sealed class ContentUseCaseTests
         typeRepo
             .SlugExistsAsync("articles", null, Arg.Any<CancellationToken>())
             .Returns(false);
-        typeRepo.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
 
         Assert.True(await checker.HasAsync(Principal(), PermissionCodes.ContentWrite, CancellationToken.None));
         Assert.False(await typeRepo.SlugExistsAsync("articles", null, CancellationToken.None));
 
         var type = new ContentType("Articles", "articles");
         typeRepo.Add(type);
-        var saved = await typeRepo.SaveChangesAsync(CancellationToken.None);
+        var saved = await unitOfWork.SaveChangesAsync(CancellationToken.None);
 
         Assert.Equal(1, saved);
         typeRepo.Received(1).Add(type);
-        await typeRepo.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Publish_HappyPath_TransitionsAndSaves()
     {
         var checker = GrantingChecker(PermissionCodes.ContentPublish);
-        var itemRepo = Substitute.For<IContentItemRepository>();
-        itemRepo.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
 
         Assert.True(await checker.HasAsync(Principal(), PermissionCodes.ContentPublish, CancellationToken.None));
         var result = item.Publish();
-        var saved = await itemRepo.SaveChangesAsync(CancellationToken.None);
+        var saved = await unitOfWork.SaveChangesAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ContentStatus.Published, item.Status);
@@ -138,25 +141,24 @@ public sealed class ContentUseCaseTests
     public async Task Unpublish_HappyPath_TransitionsAndSaves()
     {
         var checker = GrantingChecker(PermissionCodes.ContentPublish);
-        var itemRepo = Substitute.For<IContentItemRepository>();
-        itemRepo.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
         Assert.True(item.Publish().IsSuccess);
 
         Assert.True(await checker.HasAsync(Principal(), PermissionCodes.ContentPublish, CancellationToken.None));
         var result = item.Unpublish();
-        await itemRepo.SaveChangesAsync(CancellationToken.None);
+        await unitOfWork.SaveChangesAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ContentStatus.Draft, item.Status);
         Assert.NotNull(item.PublishedAtUtc);
-        await itemRepo.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Publish_WhenAlreadyPublished_FailsWithoutPersisting()
     {
-        var itemRepo = Substitute.For<IContentItemRepository>();
+        var unitOfWork = SavingUnitOfWork();
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
         Assert.True(item.Publish().IsSuccess);
 
@@ -166,7 +168,7 @@ public sealed class ContentUseCaseTests
         Assert.True(result.IsFailure);
         Assert.Equal(ContentErrors.StatusTransition, result.Error!.Code);
         Assert.Equal(ContentStatus.Published, item.Status);
-        await itemRepo.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]

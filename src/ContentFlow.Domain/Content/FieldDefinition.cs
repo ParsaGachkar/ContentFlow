@@ -1,4 +1,5 @@
 using ContentFlow.Domain.Common;
+using ContentFlow.Domain.Shared;
 
 namespace ContentFlow.Domain.Content;
 
@@ -117,3 +118,4 @@ public sealed class FieldDefinition : AuditableEntity
     /// <summary>Gets the values stored for this field across content items.</summary>
     public ICollection<ContentFieldValue> Values { get; } = new List<ContentFieldValue>();
 }
+

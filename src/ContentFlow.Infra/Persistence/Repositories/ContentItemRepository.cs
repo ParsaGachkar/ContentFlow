@@ -1,5 +1,6 @@
 using ContentFlow.Application.Shared.Content;
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace ContentFlow.Infra.Persistence.Repositories;
@@ -67,11 +68,5 @@ public sealed class ContentItemRepository : IContentItemRepository
     {
         ArgumentNullException.ThrowIfNull(item);
         _db.ContentItems.Add(item);
-    }
-
-    /// <inheritdoc />
-    public Task<int> SaveChangesAsync(CancellationToken ct = default)
-    {
-        return _db.SaveChangesAsync(ct);
     }
 }

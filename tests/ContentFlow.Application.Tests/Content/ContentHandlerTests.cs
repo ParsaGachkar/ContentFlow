@@ -4,11 +4,12 @@
 // Direct tests over the real Application-track handlers
 // (ContentFlow.Application.Content.*Handler, HandleAsync(cmd, ClaimsPrincipal, ct)
 // -> Result<TDto>), which match the specified contract shape. Repositories,
-// IPermissionChecker, and IValidator<T> are NSubstitute mocks, except where a REAL
-// FluentValidation validator is used to prove end-to-end validation short-circuiting.
-// Companion file ContentUseCaseTests pins the orchestration contract at seam level;
-// this file proves the handlers implement it (permission gate before mutation,
-// validation before permission check, persist-only-on-success).
+// IPermissionChecker, IUnitOfWork, and IValidator<T> are NSubstitute mocks, except
+// where a REAL FluentValidation validator is used to prove end-to-end validation
+// short-circuiting. Companion file ContentUseCaseTests pins the orchestration
+// contract at seam level; this file proves the handlers implement it (permission
+// gate before mutation, validation before permission check, persist-only-on-success
+// via IUnitOfWork).
 //
 // Verified handler facts these tests rely on:
 // - Pipeline order: FluentValidation -> permission check -> load/dedup -> domain ->
@@ -28,6 +29,7 @@ using ContentFlow.Application.Shared.Authorization;
 using ContentFlow.Application.Shared.Content;
 using ContentFlow.Domain.Auth;
 using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 using FluentValidation;
 using FluentValidation.Results;
 using NSubstitute;
@@ -56,6 +58,13 @@ public sealed class ContentHandlerTests
         return checker;
     }
 
+    private static IUnitOfWork SavingUnitOfWork(int saved = 1)
+    {
+        var unitOfWork = Substitute.For<IUnitOfWork>();
+        unitOfWork.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(saved);
+        return unitOfWork;
+    }
+
     private static IValidator<T> PassingValidator<T>()
     {
         var validator = Substitute.For<IValidator<T>>();
@@ -80,7 +89,8 @@ public sealed class ContentHandlerTests
     public async Task CreateType_Forbidden_ReturnsForbiddenWithoutMutation()
     {
         var types = Substitute.For<IContentTypeRepository>();
-        var handler = new CreateContentTypeHandler(types, DenyingChecker(), PassingValidator<CreateContentTypeCommand>());
+        var unitOfWork = SavingUnitOfWork();
+        var handler = new CreateContentTypeHandler(types, DenyingChecker(), PassingValidator<CreateContentTypeCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new CreateContentTypeCommand("Articles", "articles"), Principal());
 
@@ -88,7 +98,7 @@ public sealed class ContentHandlerTests
         Assert.Equal("content.forbidden", result.Error!.Code);
         await types.DidNotReceive().SlugExistsAsync(Arg.Any<string>(), null, Arg.Any<CancellationToken>());
         types.DidNotReceive().Add(Arg.Any<ContentType>());
-        await types.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -96,7 +106,8 @@ public sealed class ContentHandlerTests
     {
         var types = Substitute.For<IContentTypeRepository>();
         var permissions = Substitute.For<IPermissionChecker>();
-        var handler = new CreateContentTypeHandler(types, permissions, FailingValidator<CreateContentTypeCommand>("bad"));
+        var unitOfWork = SavingUnitOfWork();
+        var handler = new CreateContentTypeHandler(types, permissions, FailingValidator<CreateContentTypeCommand>("bad"), unitOfWork);
 
         var result = await handler.HandleAsync(new CreateContentTypeCommand("", "bad slug!!"), Principal());
 
@@ -112,7 +123,8 @@ public sealed class ContentHandlerTests
     {
         var types = Substitute.For<IContentTypeRepository>();
         var permissions = Substitute.For<IPermissionChecker>();
-        var handler = new CreateContentTypeHandler(types, permissions, new CreateContentTypeValidator());
+        var unitOfWork = SavingUnitOfWork();
+        var handler = new CreateContentTypeHandler(types, permissions, new CreateContentTypeValidator(), unitOfWork);
 
         var result = await handler.HandleAsync(new CreateContentTypeCommand("Articles", "bad slug!!"), Principal());
 
@@ -129,15 +141,16 @@ public sealed class ContentHandlerTests
         types
             .SlugExistsAsync("articles", null, Arg.Any<CancellationToken>())
             .Returns(true);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new CreateContentTypeHandler(
-            types, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentTypeCommand>());
+            types, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentTypeCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new CreateContentTypeCommand("Articles", "articles"), Principal());
 
         Assert.True(result.IsFailure);
         Assert.Equal("content.duplicate_slug", result.Error!.Code);
         types.DidNotReceive().Add(Arg.Any<ContentType>());
-        await types.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -147,9 +160,9 @@ public sealed class ContentHandlerTests
         types
             .SlugExistsAsync("articles", null, Arg.Any<CancellationToken>())
             .Returns(false);
-        types.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new CreateContentTypeHandler(
-            types, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentTypeCommand>());
+            types, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentTypeCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new CreateContentTypeCommand("Articles", "articles", "desc"), Principal());
@@ -158,7 +171,7 @@ public sealed class ContentHandlerTests
         Assert.Equal("articles", result.Value!.Slug);
         Assert.Equal("Articles", result.Value.Name);
         types.Received(1).Add(Arg.Is<ContentType>(t => t.Slug == "articles"));
-        await types.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     // --- Publish / Unpublish lifecycle handlers ---
@@ -167,14 +180,15 @@ public sealed class ContentHandlerTests
     public async Task Publish_Forbidden_ReturnsForbiddenWithoutLoading()
     {
         var items = Substitute.For<IContentItemRepository>();
-        var handler = new PublishContentItemHandler(items, DenyingChecker(), PassingValidator<PublishContentItemCommand>());
+        var unitOfWork = SavingUnitOfWork();
+        var handler = new PublishContentItemHandler(items, DenyingChecker(), PassingValidator<PublishContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new PublishContentItemCommand(Guid.NewGuid()), Principal());
 
         Assert.True(result.IsFailure);
         Assert.Equal("content.forbidden", result.Error!.Code);
         await items.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-        await items.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -182,14 +196,15 @@ public sealed class ContentHandlerTests
     {
         var items = Substitute.For<IContentItemRepository>();
         items.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((ContentItem?)null);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new PublishContentItemHandler(
-            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>());
+            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new PublishContentItemCommand(Guid.NewGuid()), Principal());
 
         Assert.True(result.IsFailure);
         Assert.Equal("content.not_found", result.Error!.Code);
-        await items.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -198,16 +213,16 @@ public sealed class ContentHandlerTests
         var items = Substitute.For<IContentItemRepository>();
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
         items.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        items.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new PublishContentItemHandler(
-            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>());
+            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new PublishContentItemCommand(item.Id), Principal());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ContentStatus.Published, result.Value!.Status);
         Assert.NotNull(result.Value.PublishedAtUtc);
-        await items.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -217,14 +232,15 @@ public sealed class ContentHandlerTests
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
         Assert.True(item.Publish().IsSuccess);
         items.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new PublishContentItemHandler(
-            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>());
+            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<PublishContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new PublishContentItemCommand(item.Id), Principal());
 
         Assert.True(result.IsFailure);
         Assert.Equal(ContentErrors.StatusTransition, result.Error!.Code);
-        await items.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -235,16 +251,16 @@ public sealed class ContentHandlerTests
         Assert.True(item.Publish().IsSuccess);
         var publishedAt = item.PublishedAtUtc;
         items.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        items.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new UnpublishContentItemHandler(
-            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<UnpublishContentItemCommand>());
+            items, GrantingChecker(PermissionCodes.ContentPublish), PassingValidator<UnpublishContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(new UnpublishContentItemCommand(item.Id), Principal());
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ContentStatus.Draft, result.Value!.Status);
         Assert.Equal(publishedAt, result.Value.PublishedAtUtc);
-        await items.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     // --- UpdateContentItemFieldsHandler ---
@@ -253,8 +269,9 @@ public sealed class ContentHandlerTests
     public async Task Update_Forbidden_ReturnsForbiddenWithoutLoading()
     {
         var items = Substitute.For<IContentItemRepository>();
+        var unitOfWork = SavingUnitOfWork();
         var handler = new UpdateContentItemFieldsHandler(
-            items, DenyingChecker(), PassingValidator<UpdateContentItemFieldsCommand>());
+            items, DenyingChecker(), PassingValidator<UpdateContentItemFieldsCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new UpdateContentItemFieldsCommand(Guid.NewGuid(), new Dictionary<string, string?> { ["title"] = "x" }),
@@ -272,8 +289,9 @@ public sealed class ContentHandlerTests
         var item = new ContentItem(Guid.NewGuid(), "hello-world");
         Assert.True(item.Publish().IsSuccess);
         items.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new UpdateContentItemFieldsHandler(
-            items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<UpdateContentItemFieldsCommand>());
+            items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<UpdateContentItemFieldsCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new UpdateContentItemFieldsCommand(item.Id, new Dictionary<string, string?> { ["title"] = "edited" }),
@@ -281,7 +299,7 @@ public sealed class ContentHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal(ContentErrors.StatusTransition, result.Error!.Code);
-        await items.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -289,8 +307,9 @@ public sealed class ContentHandlerTests
     {
         var items = Substitute.For<IContentItemRepository>();
         items.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((ContentItem?)null);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new UpdateContentItemFieldsHandler(
-            items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<UpdateContentItemFieldsCommand>());
+            items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<UpdateContentItemFieldsCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new UpdateContentItemFieldsCommand(Guid.NewGuid(), new Dictionary<string, string?> { ["title"] = "x" }),
@@ -314,8 +333,9 @@ public sealed class ContentHandlerTests
     {
         var types = Substitute.For<IContentTypeRepository>();
         var items = Substitute.For<IContentItemRepository>();
+        var unitOfWork = SavingUnitOfWork();
         var handler = new CreateContentItemHandler(
-            types, items, DenyingChecker(), PassingValidator<CreateContentItemCommand>());
+            types, items, DenyingChecker(), PassingValidator<CreateContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new CreateContentItemCommand(Guid.NewGuid(), "hello", new Dictionary<string, string?>()),
@@ -337,9 +357,9 @@ public sealed class ContentHandlerTests
         items
             .SlugExistsAsync(type.Id, "hello-world", null, Arg.Any<CancellationToken>())
             .Returns(false);
-        items.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(2);
+        var unitOfWork = SavingUnitOfWork(2);
         var handler = new CreateContentItemHandler(
-            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>());
+            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new CreateContentItemCommand(
@@ -350,7 +370,7 @@ public sealed class ContentHandlerTests
         Assert.Equal(ContentStatus.Draft, result.Value!.Status);
         Assert.Equal("Hello", result.Value.Values["title"]);
         items.Received(1).Add(Arg.Is<ContentItem>(i => i.Slug == "hello-world"));
-        await items.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -363,8 +383,9 @@ public sealed class ContentHandlerTests
         items
             .SlugExistsAsync(type.Id, "hello-world", null, Arg.Any<CancellationToken>())
             .Returns(true);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new CreateContentItemHandler(
-            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>());
+            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new CreateContentItemCommand(
@@ -386,8 +407,9 @@ public sealed class ContentHandlerTests
         items
             .SlugExistsAsync(type.Id, "hello-world", null, Arg.Any<CancellationToken>())
             .Returns(false);
+        var unitOfWork = SavingUnitOfWork();
         var handler = new CreateContentItemHandler(
-            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>());
+            types, items, GrantingChecker(PermissionCodes.ContentWrite), PassingValidator<CreateContentItemCommand>(), unitOfWork);
 
         var result = await handler.HandleAsync(
             new CreateContentItemCommand(
@@ -397,6 +419,6 @@ public sealed class ContentHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal(ContentErrors.FieldUnknown, result.Error!.Code);
         items.DidNotReceive().Add(Arg.Any<ContentItem>());
-        await items.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 }

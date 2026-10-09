@@ -1,7 +1,7 @@
-namespace ContentFlow.Domain.Content;
+namespace ContentFlow.Domain.Shared;
 
 /// <summary>
-/// Lifecycle state of a <see cref="ContentItem"/>.
+/// Lifecycle state of a content item (see ContentFlow.Domain.Content.ContentItem).
 /// </summary>
 public enum ContentStatus
 {

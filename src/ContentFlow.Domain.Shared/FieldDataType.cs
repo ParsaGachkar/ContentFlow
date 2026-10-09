@@ -1,7 +1,7 @@
-namespace ContentFlow.Domain.Content;
+namespace ContentFlow.Domain.Shared;
 
 /// <summary>
-/// Logical data type used by a <see cref="FieldDefinition"/> to describe how a field value is stored.
+/// Logical data type used by a field definition to describe how a field value is stored.
 /// </summary>
 public enum FieldDataType
 {
