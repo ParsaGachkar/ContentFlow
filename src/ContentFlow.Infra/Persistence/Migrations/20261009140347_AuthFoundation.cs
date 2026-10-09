@@ -19,7 +19,7 @@ namespace ContentFlow.Infra.Persistence.Migrations
                     key_prefix = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     key_hash = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    scopes = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    scopes = table.Column<string[]>(type: "text[]", nullable: false),
                     expires_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     revoked_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     created_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
