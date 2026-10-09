@@ -32,7 +32,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ContentFlow.Domain.Auth;
+using ContentFlow.Domain.Content;
+using ContentFlow.Domain.Shared;
 using ContentFlow.Infra.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ContentFlow.E2E;
@@ -119,20 +122,14 @@ public sealed class CriticalFlowsTests
         Assert.Equal("ready", document.RootElement.GetProperty("status").GetString());
     }
 
-    // (c) Unauthorized/placeholder flow: anonymous callers to the versioned
-    // headless API get an empty published list — never unpublished/admin data.
-    // (Scoped API-key authZ lands with ADR-004; until then this pins the
-    // placeholder contract so regressions are caught.)
+    // (c) Headless reads (issue #8): anonymous callers see published content
+    // only — unknown types and drafts are 404, never unpublished data.
     [Fact]
-    public async Task AnonymousContentApi_ExposesNoUnpublishedContent()
+    public async Task UnknownContentType_Anonymous_Returns404()
     {
-        using var response = await _client.GetAsync("/api/v1/content");
+        using var response = await _client.GetAsync("/api/v1/content/no-such-type");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var items = await response.Content.ReadFromJsonAsync<List<Dictionary<string, object>>>();
-        Assert.NotNull(items);
-        Assert.Empty(items);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -185,24 +182,119 @@ public sealed class CriticalFlowsTests
         await _db.AssertLiveAsync();
     }
 
-    // API+DB path (issue #2 follow-up): the container is live with migrations
-    // applied AND the versioned headless API still returns the empty published
-    // list with 200 — anonymous never sees unpublished content. NOTE: the
-    // placeholder API does not query the DB yet (content use cases per ADR-002
-    // are pending); this pins container-live + migrated-schema + placeholder
-    // contract together until the API reads published content from the DB.
+    // Full vertical read path (issues #2/#8): the container is live with
+    // migrations applied; seeded content flows DB -> repositories -> handlers ->
+    // HTTP. Anonymous sees published only; drafts need a content.read key.
+    // Each test seeds its own uniquely-slung type, so tests stay isolated
+    // despite the shared container.
     [RequiresDockerFact]
-    public async Task AnonymousContentApi_WithMigratedDatabase_ExposesNoUnpublishedContent()
+    public async Task EmptyContentType_Anonymous_ReturnsEmptyList()
     {
         await _db.AssertLiveAsync();
+        var typeSlug = await SeedArticleTypeAsync();
 
-        using var response = await _client.GetAsync("/api/v1/content");
+        using var response = await _client.GetAsync($"/api/v1/content/{typeSlug}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var items = await response.Content.ReadFromJsonAsync<List<Dictionary<string, object>>>();
-        Assert.NotNull(items);
-        Assert.Empty(items);
+        var body = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(body);
+        Assert.Equal(0, document.RootElement.GetProperty("total").GetInt32());
+        Assert.Empty(document.RootElement.GetProperty("items").EnumerateArray());
+    }
+
+    [RequiresDockerFact]
+    public async Task PublishedContent_Anonymous_Returns200WithValues()
+    {
+        await _db.AssertLiveAsync();
+        var typeSlug = await SeedArticleTypeAsync();
+        await SeedItemAsync(typeSlug, "hello", "Hello", publish: true);
+
+        using var response = await _client.GetAsync($"/api/v1/content/{typeSlug}/hello");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(body);
+        Assert.Equal("hello", document.RootElement.GetProperty("slug").GetString());
+        Assert.Equal("Hello", document.RootElement.GetProperty("values").GetProperty("title").GetString());
+    }
+
+    [RequiresDockerFact]
+    public async Task DraftContent_Anonymous_Returns404()
+    {
+        await _db.AssertLiveAsync();
+        var typeSlug = await SeedArticleTypeAsync();
+        await SeedItemAsync(typeSlug, "secret", "Shh", publish: false);
+
+        using var response = await _client.GetAsync($"/api/v1/content/{typeSlug}/secret");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [RequiresDockerFact]
+    public async Task DraftContent_WithReadScope_Returns200()
+    {
+        await _db.AssertLiveAsync();
+        var typeSlug = await SeedArticleTypeAsync();
+        await SeedItemAsync(typeSlug, "secret", "Shh", publish: false);
+        var presented = await SeedApiKeyAsync("e2e-reader-key", ["content.read"]);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/content/{typeSlug}/secret?includeDrafts=true");
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", presented);
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [RequiresDockerFact]
+    public async Task DraftContent_WithScopelessKey_Returns404Not403()
+    {
+        await _db.AssertLiveAsync();
+        var typeSlug = await SeedArticleTypeAsync();
+        await SeedItemAsync(typeSlug, "secret", "Shh", publish: false);
+        var presented = await SeedApiKeyAsync("e2e-noscope-key", ["media.manage"]);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/content/{typeSlug}/secret?includeDrafts=true");
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", presented);
+        using var response = await _client.SendAsync(request);
+
+        // Existence hiding: unauthorized draft access is 404, never 403.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private async Task<string> SeedArticleTypeAsync()
+    {
+        var slug = "e2e" + Guid.NewGuid().ToString("N");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ContentFlowDbContext>();
+        var type = new ContentType("E2E Articles", slug);
+        var added = type.AddField(new FieldDefinition(type.Id, "Title", "title", FieldDataType.Text, isRequired: true));
+        Assert.True(added.IsSuccess);
+        db.ContentTypes.Add(type);
+        await db.SaveChangesAsync();
+
+        return slug;
+    }
+
+    private async Task SeedItemAsync(string typeSlug, string itemSlug, string title, bool publish)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ContentFlowDbContext>();
+        var type = await db.ContentTypes
+            .Include(t => t.Fields)
+            .SingleAsync(t => t.Slug == typeSlug);
+
+        var item = new ContentItem(type.Id, itemSlug);
+        Assert.True(item.SetFieldValue(type.Fields.Single(f => f.Key == "title"), title).IsSuccess);
+        if (publish)
+        {
+            Assert.True(item.Publish().IsSuccess);
+        }
+
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
     }
 
     // Scoped API keys (issue #6, ADR-004): keys are minted in-test, stored as
