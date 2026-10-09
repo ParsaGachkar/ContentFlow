@@ -1,18 +1,16 @@
 // Auth endpoint tests (ADR-004 auth foundation, issue #6).
 //
-// Contract under test (parallel Web track owns src):
-// - GET /api/v1/admin/status with X-Api-Key: 401 when missing/invalid,
-//   403 for a valid key without the admin.access scope, 200 with scope.
+// Auth endpoint tests (ADR-004 auth foundation, issue #6).
+//
+// Contract under test:
+// - GET /api/v1/admin/status with `Authorization: ApiKey <key>`: 401 when
+//   missing/invalid; 403 for a valid key without admin.access (proven in E2E
+//   with a seeded DB — no DB is available from this suite); 200 with scope.
 // - /admin/login SSR form exists in Development only; non-Development -> 404.
 // - GET /api/v1/content stays anonymous-empty (covered by E2E — not duplicated here).
-//
-// BLOCKED (documented, not faked): the 403 path needs a seeded valid key without the
-// scope, but Web registers no IApiKeyValidator / seed hook (see Program.cs — only
-// OpenApi + persistence), and tests/** may not touch src/**. The 403 test is therefore
-// omitted until the Web/Infra tracks land; the 401 tests below fail RED (404, no
-// endpoint) until the Web track implements GET /api/v1/admin/status.
 
 using System.Net;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -52,7 +50,7 @@ public sealed class AuthEndpointTests : IClassFixture<ContentFlowWebFactory>
     public async Task AdminStatus_InvalidKey_Returns401()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/status");
-        request.Headers.Add("X-Api-Key", "invalid-key");
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", "invalid-key");
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);

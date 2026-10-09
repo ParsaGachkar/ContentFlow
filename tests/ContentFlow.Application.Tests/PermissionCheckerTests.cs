@@ -68,7 +68,7 @@ public sealed class PermissionCheckerTests
     [Fact]
     public void AdminAccessCode_MatchesApiContractScope()
     {
-        // GET /api/v1/admin/status requires this exact scope (X-Api-Key scheme).
+        // GET /api/v1/admin/status requires this exact scope (ApiKey scheme).
         Assert.Equal("admin.access", PermissionCodes.AdminAccess);
     }
 

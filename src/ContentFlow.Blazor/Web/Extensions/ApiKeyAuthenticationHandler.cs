@@ -10,17 +10,21 @@ namespace ContentFlow.Blazor.Web.Extensions;
 public sealed class ApiKeyOptions : AuthenticationSchemeOptions
 {
     /// <summary>
-    /// Request header carrying the API key. There is deliberately NO query-string
-    /// (<c>?api_key=</c>) fallback: URLs leak into server/access logs, browser
-    /// history, Referer headers, and shared links, while headers stay out of all
-    /// of those. Secrets must never travel in the URL.
+    /// RFC 7235 auth-scheme name expected in the standard <c>Authorization</c>
+    /// header: <c>Authorization: ApiKey &lt;key&gt;</c>. There is deliberately NO
+    /// query-string (<c>?api_key=</c>) fallback: URLs leak into server/access logs,
+    /// browser history, Referer headers, and shared links, while headers stay out
+    /// of all of those. Secrets must never travel in the URL.
     /// </summary>
-    public const string HeaderName = "X-Api-Key";
+    public const string SchemeName = "ApiKey";
 }
 
 /// <summary>
 /// API-key authentication handler ("ApiKey" scheme, ADR-004) for headless access.
-/// Header-only transport (see <see cref="ApiKeyOptions.HeaderName"/> for why).
+/// Standard <c>Authorization</c> header transport
+/// (<c>Authorization: ApiKey &lt;key&gt;</c>; scheme name matched case-insensitively
+/// per RFC 7235). Other schemes (e.g. Bearer) are left alone (NoResult) so this
+/// handler never interferes with credentials meant for another scheme.
 /// Validation is delegated to the canonical <see cref="IApiKeyValidator"/>, which
 /// returns an <see cref="ApiKeyValidationResult"/> (identity + derived principal
 /// with scopes as claims) or null for unknown/revoked/expired keys.
@@ -45,12 +49,28 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyOp
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var provided = Request.Headers[ApiKeyOptions.HeaderName].ToString();
+        var header = Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(header))
+        {
+            // No credentials at all: not a failure of this scheme, just
+            // "not applicable" — the authorization layer turns unauthenticated
+            // /api calls into 401 JSON.
+            return AuthenticateResult.NoResult();
+        }
+
+        var separator = header.IndexOf(' ');
+        var scheme = separator < 0 ? header : header[..separator];
+        if (!string.Equals(scheme, ApiKeyOptions.SchemeName, StringComparison.OrdinalIgnoreCase))
+        {
+            // Credentials for another scheme (e.g. Bearer): leave them alone.
+            return AuthenticateResult.NoResult();
+        }
+
+        var provided = separator < 0 ? string.Empty : header[(separator + 1)..].Trim();
         if (string.IsNullOrWhiteSpace(provided))
         {
-            // No key: not a failure of this scheme, just "not applicable" —
-            // the authorization layer turns unauthenticated /api calls into 401 JSON.
-            return AuthenticateResult.NoResult();
+            _log.LogWarning(AuthEvents.ApiKeyRejected, "API key authentication rejected (empty credentials).");
+            return AuthenticateResult.Fail("Invalid API key.");
         }
 
         ApiKeyValidationResult? result;

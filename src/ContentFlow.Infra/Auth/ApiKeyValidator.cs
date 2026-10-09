@@ -122,7 +122,7 @@ public sealed class ApiKeyValidator : IApiKeyValidator
         return null;
     }
 
-    private static ClaimsPrincipal BuildPrincipal(Guid apiKeyId, string apiKeyName, string scopes)
+    private static ClaimsPrincipal BuildPrincipal(Guid apiKeyId, string apiKeyName, IReadOnlyList<string> scopes)
     {
         var claims = new List<Claim>
         {
@@ -130,7 +130,7 @@ public sealed class ApiKeyValidator : IApiKeyValidator
             new(ClaimTypes.Name, apiKeyName),
         };
 
-        foreach (var scope in scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var scope in scopes)
         {
             claims.Add(new Claim(ScopeClaimType, scope));
         }

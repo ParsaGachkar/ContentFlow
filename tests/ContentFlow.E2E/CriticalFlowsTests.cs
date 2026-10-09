@@ -26,6 +26,7 @@
 // installed Playwright browsers (browser tests only).
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -213,10 +214,10 @@ public sealed class CriticalFlowsTests
     public async Task ScopedApiKey_WithAdminAccess_Returns200()
     {
         await _db.AssertLiveAsync();
-        var presented = await SeedApiKeyAsync("e2e-admin-key", "content.read admin.access");
+        var presented = await SeedApiKeyAsync("e2e-admin-key", ["content.read", "admin.access"]);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/status");
-        request.Headers.Add("X-Api-Key", presented);
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", presented);
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -226,16 +227,16 @@ public sealed class CriticalFlowsTests
     public async Task ScopedApiKey_WithoutAdminAccess_Returns403()
     {
         await _db.AssertLiveAsync();
-        var presented = await SeedApiKeyAsync("e2e-reader-key", "content.read");
+        var presented = await SeedApiKeyAsync("e2e-reader-key", ["content.read"]);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/admin/status");
-        request.Headers.Add("X-Api-Key", presented);
+        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", presented);
         using var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    private async Task<string> SeedApiKeyAsync(string name, string scopes)
+    private async Task<string> SeedApiKeyAsync(string name, string[] scopes)
     {
         var presented = "e2e" + Guid.NewGuid().ToString("N");
         var prefix = presented[..8];
