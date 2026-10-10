@@ -13,6 +13,17 @@ namespace ContentFlow.Application.Shared.Content;
 public interface IContentItemRepository : IRepository<ContentItem>
 {
     /// <summary>
+    /// Gets a single item by type and slug, optionally restricted to a <paramref name="status"/>
+    /// (indexed lookup for headless reads; slug compared normalized lowercase).
+    /// </summary>
+    /// <param name="typeId">The owning content type identifier.</param>
+    /// <param name="slug">The item slug.</param>
+    /// <param name="status">Optional lifecycle filter (<see langword="null"/> matches any status).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The item with <c>FieldValues</c> + <c>ContentType.Fields</c>, or <see langword="null"/>.</returns>
+    Task<ContentItem?> GetBySlugAsync(Guid typeId, string slug, ContentStatus? status = null, CancellationToken ct = default);
+
+    /// <summary>
     /// Lists items of a content type, optionally filtered by <paramref name="status"/>.
     /// </summary>
     /// <param name="typeId">The owning content type identifier.</param>

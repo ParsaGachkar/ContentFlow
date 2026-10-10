@@ -31,6 +31,25 @@ public sealed class ContentItemRepository : IContentItemRepository
     }
 
     /// <inheritdoc />
+    public Task<ContentItem?> GetBySlugAsync(Guid typeId, string slug, ContentStatus? status = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(slug);
+        var normalized = slug.Trim().ToLowerInvariant();
+
+        IQueryable<ContentItem> query = _db.ContentItems
+            .Include(i => i.FieldValues)
+            .Include(i => i.ContentType).ThenInclude(t => t.Fields)
+            .Where(i => i.ContentTypeId == typeId && i.Slug == normalized);
+
+        if (status.HasValue)
+        {
+            query = query.Where(i => i.Status == status.Value);
+        }
+
+        return query.FirstOrDefaultAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ContentItem>> ListByTypeAsync(Guid typeId, ContentStatus? status = null, CancellationToken ct = default)
     {
         IQueryable<ContentItem> query = _db.ContentItems

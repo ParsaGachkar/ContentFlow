@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="..\ContentFlow.Domain.Shared\ContentFlow.Domain.Shared.csproj" />
     <ProjectReference Include="..\ContentFlow.Domain\ContentFlow.Domain.csproj" />
     <ProjectReference Include="..\ContentFlow.Application.Shared\ContentFlow.Application.Shared.csproj" />

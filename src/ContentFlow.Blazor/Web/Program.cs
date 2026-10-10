@@ -1,3 +1,4 @@
+using ContentFlow.Application.Content;
 using ContentFlow.Application.Shared.Authorization;
 using ContentFlow.Blazor.Client;
 using ContentFlow.Blazor.Web.Components;
@@ -5,6 +6,7 @@ using ContentFlow.Blazor.Web.Endpoints;
 using ContentFlow.Blazor.Web.Extensions;
 using ContentFlow.Domain.Auth;
 using ContentFlow.Infra.Auth;
+using ContentFlow.Infra.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,7 +31,14 @@ builder.Services.AddContentFlowAuthZ();
 if (persistenceEnabled)
 {
     builder.Services.AddContentFlowAuth();
+    builder.Services.AddContentFlowRepositories();
 }
+
+// Null content repositories FIRST (TryAdd: real Infra implementations registered
+// above win when persistence is configured; DB-less boots answer 404, not 500).
+builder.Services.AddNullContentRepositories();
+
+builder.Services.AddContentFlowContent();
 
 var app = builder.Build();
 
