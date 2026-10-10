@@ -7,40 +7,6 @@ using ContentFlow.Domain.Shared;
 using FluentValidation;
 
 namespace ContentFlow.Application.Content;
-
-/// <summary>
-/// Creates a new draft content item with initial field values (issue #7, ADR-002).
-/// Requires the <c>content.write</c> permission. Values are validated as required/type via the
-/// domain (<see cref="ContentItem.SetFieldValue(FieldDefinition, string?)"/>); the item is
-/// created in <see cref="ContentStatus.Draft"/> status.
-/// </summary>
-/// <param name="ContentTypeId">Owning content type identifier.</param>
-/// <param name="Slug">URL-friendly slug, unique within the content type.</param>
-/// <param name="InitialValues">Raw field values keyed by field key (may be empty when the type has no required fields).</param>
-public sealed record CreateContentItemCommand(
-    Guid ContentTypeId,
-    string Slug,
-    IReadOnlyDictionary<string, string?> InitialValues);
-
-/// <summary>Validates <see cref="CreateContentItemCommand"/>.</summary>
-public sealed class CreateContentItemValidator : AbstractValidator<CreateContentItemCommand>
-{
-    /// <summary>Initializes a new instance.</summary>
-    public CreateContentItemValidator()
-    {
-        RuleFor(x => x.ContentTypeId)
-            .NotEmpty().WithMessage("Content type identifier is required.");
-
-        RuleFor(x => x.Slug)
-            .NotEmpty().WithMessage("Content item slug is required.")
-            .Must(ContentSlugRule.IsValid).WithMessage(
-                "Slug '{PropertyValue}' is invalid. Use lowercase letters, digits, and single hyphens (e.g. 'my-article').");
-
-        RuleFor(x => x.InitialValues)
-            .NotNull().WithMessage("Initial values are required (provide an empty set when the type has no required fields).");
-    }
-}
-
 /// <summary>
 /// Handles <see cref="CreateContentItemCommand"/>: validates input, enforces <c>content.write</c>,
 /// rejects duplicate slugs within the type, applies initial values through the domain, then persists.

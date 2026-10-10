@@ -7,32 +7,6 @@ using ContentFlow.Domain.Shared;
 using FluentValidation;
 
 namespace ContentFlow.Application.Content;
-
-/// <summary>
-/// Creates a new content type (issue #7, ADR-002).
-/// Requires the <c>content.write</c> permission. Slug uniqueness is enforced at the repository level.
-/// </summary>
-/// <param name="Name">Human-readable display name (required, non-blank).</param>
-/// <param name="Slug">URL/machine-friendly unique slug.</param>
-/// <param name="Description">Optional description.</param>
-public sealed record CreateContentTypeCommand(string Name, string Slug, string? Description = null);
-
-/// <summary>Validates <see cref="CreateContentTypeCommand"/>.</summary>
-public sealed class CreateContentTypeValidator : AbstractValidator<CreateContentTypeCommand>
-{
-    /// <summary>Initializes a new instance.</summary>
-    public CreateContentTypeValidator()
-    {
-        RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Content type name is required.");
-
-        RuleFor(x => x.Slug)
-            .NotEmpty().WithMessage("Content type slug is required.")
-            .Must(ContentSlugRule.IsValid).WithMessage(
-                "Slug '{PropertyValue}' is invalid. Use lowercase letters, digits, and single hyphens (e.g. 'my-article').");
-    }
-}
-
 /// <summary>
 /// Handles <see cref="CreateContentTypeCommand"/>: validates input, enforces <c>content.write</c>,
 /// rejects duplicate slugs, then persists the new type.

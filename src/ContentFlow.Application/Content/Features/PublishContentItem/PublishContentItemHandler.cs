@@ -6,39 +6,19 @@ using ContentFlow.Domain.Shared;
 using FluentValidation;
 
 namespace ContentFlow.Application.Content;
-
-/// <summary>
-/// Archives a published content item (Published → Archived, issue #7).
-/// Requires the <c>content.publish</c> permission. The transition itself is delegated to the
-/// domain (<see cref="ContentItem.Archive"/>).
-/// </summary>
-/// <param name="ContentItemId">The content item identifier.</param>
-public sealed record ArchiveContentItemCommand(Guid ContentItemId);
-
-/// <summary>Validates <see cref="ArchiveContentItemCommand"/>.</summary>
-public sealed class ArchiveContentItemValidator : AbstractValidator<ArchiveContentItemCommand>
-{
-    /// <summary>Initializes a new instance.</summary>
-    public ArchiveContentItemValidator()
-    {
-        RuleFor(x => x.ContentItemId)
-            .NotEmpty().WithMessage("Content item identifier is required.");
-    }
-}
-
-/// <summary>Handles <see cref="ArchiveContentItemCommand"/>.</summary>
-public sealed class ArchiveContentItemHandler
+/// <summary>Handles <see cref="PublishContentItemCommand"/>.</summary>
+public sealed class PublishContentItemHandler
 {
     private readonly IContentItemRepository _items;
     private readonly IPermissionChecker _permissions;
-    private readonly IValidator<ArchiveContentItemCommand> _validator;
+    private readonly IValidator<PublishContentItemCommand> _validator;
     private readonly IUnitOfWork _unitOfWork;
 
     /// <summary>Initializes a new instance.</summary>
-    public ArchiveContentItemHandler(
+    public PublishContentItemHandler(
         IContentItemRepository items,
         IPermissionChecker permissions,
-        IValidator<ArchiveContentItemCommand> validator,
+        IValidator<PublishContentItemCommand> validator,
         IUnitOfWork unitOfWork)
     {
         _items = items;
@@ -49,7 +29,7 @@ public sealed class ArchiveContentItemHandler
 
     /// <summary>Handles the command.</summary>
     public async Task<Result<ContentItemDto>> HandleAsync(
-        ArchiveContentItemCommand command,
+        PublishContentItemCommand command,
         ClaimsPrincipal user,
         CancellationToken ct = default)
     {
@@ -63,7 +43,7 @@ public sealed class ArchiveContentItemHandler
         }
 
         return await ContentLifecycle.TransitionAsync(
-            _items, _unitOfWork, _permissions, user, command.ContentItemId, static item => item.Archive(), ct)
+            _items, _unitOfWork, _permissions, user, command.ContentItemId, static item => item.Publish(), ct)
             .ConfigureAwait(false);
     }
 }

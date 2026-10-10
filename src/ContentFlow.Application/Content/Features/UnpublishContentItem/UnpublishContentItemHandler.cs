@@ -6,31 +6,6 @@ using ContentFlow.Domain.Shared;
 using FluentValidation;
 
 namespace ContentFlow.Application.Content;
-
-/// <summary>
-/// Unpublishes a published content item (Published → Draft, issue #7).
-/// Requires the <c>content.publish</c> permission. The transition itself is delegated to the
-/// domain (<see cref="ContentItem.Unpublish"/>).
-/// </summary>
-/// <remarks>
-/// Visibility rules (who can READ published vs unpublished content over headless/public surfaces)
-/// are NOT decided here; they land with the headless API (issue #8). This use case only performs
-/// the lifecycle transition.
-/// </remarks>
-/// <param name="ContentItemId">The content item identifier.</param>
-public sealed record UnpublishContentItemCommand(Guid ContentItemId);
-
-/// <summary>Validates <see cref="UnpublishContentItemCommand"/>.</summary>
-public sealed class UnpublishContentItemValidator : AbstractValidator<UnpublishContentItemCommand>
-{
-    /// <summary>Initializes a new instance.</summary>
-    public UnpublishContentItemValidator()
-    {
-        RuleFor(x => x.ContentItemId)
-            .NotEmpty().WithMessage("Content item identifier is required.");
-    }
-}
-
 /// <summary>Handles <see cref="UnpublishContentItemCommand"/>.</summary>
 public sealed class UnpublishContentItemHandler
 {
